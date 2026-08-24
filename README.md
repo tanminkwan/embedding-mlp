@@ -1,18 +1,50 @@
-# embedding-lr
+# embedding-mlp
 
-기 구축된 임베딩 서비스(**AIPro+**, BGE-M3 + Qdrant, `localhost:28000`)와 가벼운
-Logistic Regression을 결합해, 실시간 쿼리를 5-class로 분류하는 파이프라인.
-자세한 배경은 [docs/Scope_Definition.md](docs/Scope_Definition.md) 참고.
+기 구축된 임베딩 서비스(**AIPro+**, BGE-M3 + Qdrant, `localhost:28000`)와 작은
+MLP(Multi-Layer Perceptron) 분류기를 결합해, 실시간 쿼리를 다중 클래스로 분류하는
+파이프라인. 기존 `embedding-lr` 프로젝트를 이어받아 (1) IT 단일 라벨을
+`dba`/`devops`/`os`/`network`/`middleware`/`etc` 6개로 세분화하고, (2) 분류기를
+Logistic Regression에서 작은 MLP로 교체하는 것을 목표로 한다. 자세한 배경은
+[docs/Scope_Definition.md](docs/Scope_Definition.md) 참고(원본 5-class 스코프이며,
+세분화·MLP 전환 관련 요구사항/설계 문서는 `mlp-phase0`부터 순차 추가 예정).
 
 ## 분류 대상
 
+기존 `IT` 단일 라벨을 6개 세부 라벨로 세분화한다. `NON_IT` 4종은 기존과 동일하다.
+
 | 라벨 | 설명 | 최종 판정 |
 |---|---|---|
-| `IT` | IT 5개 직무 역할 기반 기술 질의 | **IT** |
+| `DBA` | 데이터베이스 관리 관련 기술 질의 | **IT** |
+| `DEVOPS` | CI/CD, 배포, 운영 자동화 관련 기술 질의 | **IT** |
+| `OS` | 운영체제 관련 기술 질의 | **IT** |
+| `NETWORK` | 네트워크 관련 기술 질의 | **IT** |
+| `MIDDLEWARE` | 미들웨어(WAS, 메시지 큐 등) 관련 기술 질의 | **IT** |
+| `ETC` | 그 외 IT 기술 질의 | **IT** |
 | `DAILY` | 일상 대화 | NON_IT |
 | `KNOWLEDGE` | 일반 지식/교양 | NON_IT |
 | `CREATIVE` | 창작/엔터테인먼트 | NON_IT |
 | `ANOMALY` | 무의미 입력 | NON_IT |
+
+`final_verdict`(IT/NON_IT 이진 판정) 로직은 변경 없음 — 위 10개 라벨 중 `NON_IT` 4종을
+제외한 나머지가 전부 `IT`로 판정된다.
+
+## 분류 모델: Logistic Regression → MLP
+
+Phase 3(모델 학습)의 분류기를 scikit-learn `LogisticRegression`에서 작은 MLP로
+교체한다. 입력은 기존과 동일하게 BGE-M3 임베딩 벡터(1024차원), 출력은 위 10개
+클래스(`K=10`)에 대한 확률 분포다.
+
+```
+입력(1024) → [W1: 1024×64] → ReLU → [W2: 64×64] → ReLU → [W3: 64×K] → softmax
+```
+
+- 은닉층 2개(64 유닛)로 구성된 소형 네트워크 — 대형 트랜스포머가 아니라 임베딩 위에
+  얹는 얕은 분류 헤드 수준을 유지한다.
+- `K`는 클래스 수(현재 10)로, `constants.py`에 정의된 라벨 목록 크기를 그대로
+  따른다(하드코딩 금지 원칙, CLAUDE.md 4절).
+- Phase 1(라벨 세분화)·Phase 3(MLP 학습) 상세 요구사항/설계는 `mlp-phase0` 이후
+  브랜치에서 CLAUDE.md 3절 절차(요구사항정의서 → 설계서 → 코드/테스트 → 테스트결과서)에
+  따라 문서화한다.
 
 ## 파이프라인
 
@@ -131,8 +163,10 @@ curl -X POST http://localhost:8080/classify \
 
 ## 진행 상황
 
-Phase 0(공통 모듈)~Phase 5(추론)까지 코드가 구현·테스트된 상태다. 5개 Phase 전체
-완료.
+Phase 0(공통 모듈)~Phase 5(추론)까지 코드가 구현·테스트된 상태다(`embedding-lr` 기준
+5개 Phase 전체 완료). 이후 `mlp-phase0` 브랜치부터 (1) IT 라벨 세분화(6종),
+(2) 분류기 Logistic Regression → MLP 교체를 목표로 후속 작업을 진행한다 — 현재는
+README 갱신(스코프 선언) 단계이며, 상세 요구사항정의서/설계서는 아직 작성 전이다.
 
 | 영역 | 상태 | 비고 |
 |---|---|---|
