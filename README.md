@@ -1,50 +1,63 @@
 # embedding-mlp
 
-기 구축된 임베딩 서비스(**AIPro+**, BGE-M3 + Qdrant, `localhost:28000`)와 작은
-MLP(Multi-Layer Perceptron) 분류기를 결합해, 실시간 쿼리를 다중 클래스로 분류하는
-파이프라인. 기존 `embedding-lr` 프로젝트를 이어받아 (1) IT 단일 라벨을
-`dba`/`devops`/`os`/`network`/`middleware`/`etc` 6개로 세분화하고, (2) 분류기를
-Logistic Regression에서 작은 MLP로 교체하는 것을 목표로 한다. 자세한 배경은
-[docs/Scope_Definition.md](docs/Scope_Definition.md) 참고(원본 5-class 스코프이며,
-세분화·MLP 전환 관련 요구사항/설계 문서는 `mlp-phase0`부터 순차 추가 예정).
+기 구축된 임베딩 서비스(**AIPro+**, BGE-M3 + Qdrant, `localhost:28000`)를 앞단에 두고,
+2단계 캐스케이드로 실시간 쿼리를 분류하는 파이프라인.
+
+1. **1차 분류(기존 유지)**: `embedding-lr`의 Logistic Regression 5-class 분류기를
+   그대로 사용해 `IT`/`DAILY`/`KNOWLEDGE`/`CREATIVE`/`ANOMALY`를 판정한다. 이 단계는
+   수정하지 않는다.
+2. **2차 분류(신규)**: 1차 결과가 `IT`인 건에 대해서만, 작은 MLP 분류기가
+   `dba`/`devops`/`os`/`network`/`middleware`/`etc` 6개 세부 카테고리로 재분류한다.
+   `NON_IT`(1차가 `IT`가 아닌 경우)는 2차 분류를 타지 않는다.
+
+자세한 배경은 [docs/Scope_Definition.md](docs/Scope_Definition.md) 참고(원본 5-class
+스코프이며, 2차 MLP 분류 관련 요구사항/설계 문서는 `mlp-phase0`부터 순차 추가 예정).
 
 ## 분류 대상
 
-기존 `IT` 단일 라벨을 6개 세부 라벨로 세분화한다. `NON_IT` 4종은 기존과 동일하다.
+### 1차: LR 5-class (기존, 변경 없음)
 
 | 라벨 | 설명 | 최종 판정 |
 |---|---|---|
-| `DBA` | 데이터베이스 관리 관련 기술 질의 | **IT** |
-| `DEVOPS` | CI/CD, 배포, 운영 자동화 관련 기술 질의 | **IT** |
-| `OS` | 운영체제 관련 기술 질의 | **IT** |
-| `NETWORK` | 네트워크 관련 기술 질의 | **IT** |
-| `MIDDLEWARE` | 미들웨어(WAS, 메시지 큐 등) 관련 기술 질의 | **IT** |
-| `ETC` | 그 외 IT 기술 질의 | **IT** |
+| `IT` | IT 기술 질의 (2차 세부 분류 대상) | **IT** |
 | `DAILY` | 일상 대화 | NON_IT |
 | `KNOWLEDGE` | 일반 지식/교양 | NON_IT |
 | `CREATIVE` | 창작/엔터테인먼트 | NON_IT |
 | `ANOMALY` | 무의미 입력 | NON_IT |
 
-`final_verdict`(IT/NON_IT 이진 판정) 로직은 변경 없음 — 위 10개 라벨 중 `NON_IT` 4종을
-제외한 나머지가 전부 `IT`로 판정된다.
+### 2차: MLP 6-class (신규, 1차가 `IT`인 건만 대상)
 
-## 분류 모델: Logistic Regression → MLP
+| 라벨 | 설명 |
+|---|---|
+| `DBA` | 데이터베이스 관리 관련 기술 질의 |
+| `DEVOPS` | CI/CD, 배포, 운영 자동화 관련 기술 질의 |
+| `OS` | 운영체제 관련 기술 질의 |
+| `NETWORK` | 네트워크 관련 기술 질의 |
+| `MIDDLEWARE` | 미들웨어(WAS, 메시지 큐 등) 관련 기술 질의 |
+| `ETC` | 그 외 IT 기술 질의 |
 
-Phase 3(모델 학습)의 분류기를 scikit-learn `LogisticRegression`에서 작은 MLP로
-교체한다. 입력은 기존과 동일하게 BGE-M3 임베딩 벡터(1024차원), 출력은 위 10개
-클래스(`K=10`)에 대한 확률 분포다.
+`final_verdict`(IT/NON_IT 이진 판정) 로직은 1차 결과 기준으로 변경 없음. 2차 라벨은
+`final_verdict`에 영향을 주지 않고, `IT`로 판정된 건의 세부 분류 정보로만 추가된다.
+
+## 분류 모델: 1차 LR(유지) + 2차 MLP(신규)
+
+1차 Logistic Regression(scikit-learn, `LogisticRegression`)은 기존 그대로 사용한다.
+2차 세부 분류기만 작은 MLP로 신규 도입한다. 입력은 1차와 동일한 BGE-M3 임베딩
+벡터(1024차원), 출력은 위 6개 IT 세부 클래스(`K=6`)에 대한 확률 분포다.
 
 ```
-입력(1024) → [W1: 1024×64] → ReLU → [W2: 64×64] → ReLU → [W3: 64×K] → softmax
+입력(1024) → [W1: 1024×64] → ReLU → [W2: 64×64] → ReLU → [W3: 64×K] → softmax   (K=6)
 ```
 
 - 은닉층 2개(64 유닛)로 구성된 소형 네트워크 — 대형 트랜스포머가 아니라 임베딩 위에
   얹는 얕은 분류 헤드 수준을 유지한다.
-- `K`는 클래스 수(현재 10)로, `constants.py`에 정의된 라벨 목록 크기를 그대로
+- 2차 MLP는 1차에서 `IT`로 판정된 데이터만으로 별도 학습·추론한다(1차 모델과 독립된
+  아티팩트, 예: `model_it_sub_<ver>.pkl`).
+- `K`는 클래스 수(현재 6)로, `constants.py`에 정의된 라벨 목록 크기를 그대로
   따른다(하드코딩 금지 원칙, CLAUDE.md 4절).
-- Phase 1(라벨 세분화)·Phase 3(MLP 학습) 상세 요구사항/설계는 `mlp-phase0` 이후
-  브랜치에서 CLAUDE.md 3절 절차(요구사항정의서 → 설계서 → 코드/테스트 → 테스트결과서)에
-  따라 문서화한다.
+- 1차 분류기·파이프라인(Phase 1~5)은 수정하지 않고, 2차 MLP 분류기를 위한 요구사항/설계
+  문서는 `mlp-phase0` 이후 브랜치에서 CLAUDE.md 3절 절차(요구사항정의서 → 설계서 →
+  코드/테스트 → 테스트결과서)에 따라 문서화한다.
 
 ## 파이프라인
 
@@ -164,9 +177,11 @@ curl -X POST http://localhost:8080/classify \
 ## 진행 상황
 
 Phase 0(공통 모듈)~Phase 5(추론)까지 코드가 구현·테스트된 상태다(`embedding-lr` 기준
-5개 Phase 전체 완료). 이후 `mlp-phase0` 브랜치부터 (1) IT 라벨 세분화(6종),
-(2) 분류기 Logistic Regression → MLP 교체를 목표로 후속 작업을 진행한다 — 현재는
-README 갱신(스코프 선언) 단계이며, 상세 요구사항정의서/설계서는 아직 작성 전이다.
+5개 Phase 전체 완료, 1차 LR 분류기는 수정하지 않고 그대로 유지). 이후 `mlp-phase0`
+브랜치부터 1차 결과가 `IT`인 건에 한해 `dba`/`devops`/`os`/`network`/`middleware`/`etc`
+6종으로 재분류하는 **2차 MLP 분류기**를 추가하는 것을 목표로 후속 작업을 진행한다 —
+현재는 README 갱신(스코프 선언) 단계이며, 상세 요구사항정의서/설계서는 아직 작성
+전이다.
 
 | 영역 | 상태 | 비고 |
 |---|---|---|
