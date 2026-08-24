@@ -108,6 +108,32 @@ AIPro+의 지식 저장소 기능(도메인/콜렉션/추적성)이 그대로 �
   재라벨링(추가로 해당되는 라벨 유무 재검토)이 필요하고, 신규 데이터의 일부는 처음부터
   2개 이상 역할이 겹치는 질의로 의도적으로 생성해야 한다. 자세한 전략은 3.4절 참고.
 
+### 2.3 Phase 0(공통 모듈) 재사용 검토 결과(신규)
+
+**원칙**: Phase 0 산출물(`config.py`/`constants.py`/`domain/models.py`/
+`domain/interfaces.py`/`exceptions.py`/`workflow/run_context.py`/`logging_config.py`)에는
+**기존 것에 추가(add)만 가능하고, 기존 기능(필드/시그니처/검증 규칙)을 변경하는 것은
+불가**하다는 관점으로 2차 확장에 필요한 것이 있는지 실제 코드를 검토했다.
+
+**결론: 추가가 전혀 필요 없다 — Phase 0는 1차와 완전히 동일하게 그대로 재사용한다.**
+이미 충분히 일반적으로 설계돼 있어 그대로 재사용 가능한 지점:
+
+| Phase 0 요소 | 재사용 가능 근거 |
+|---|---|
+| `domain/interfaces.py`의 `Classifier` Protocol | `predict_proba(X) -> list[dict[str, float]]` 시그니처가 "확률 합계 1"을 강제하지 않는다 — 2차 멀티라벨 MLP도 이 Protocol을 그대로 구현하면 된다. 신규 Protocol 불필요 |
+| `domain/models.py`의 `KnowledgeRecord`/`KnowledgeItem` | `source` 필드는 여전히 `IT`(1차 카테고리) 값만 담으면 되고, 2차 세부 라벨(리스트)은 AIPro+에 보내지 않고 로컬 데이터 파일에서만 관리한다 — 검증 규칙 변경 불필요 |
+| `workflow/run_context.py`, `logging_config.py` | `phase` 파라미터에 `"phase3_it_sub"` 같은 새 문자열만 넘기면 되는 범용 구현 — 코드 변경 없이 그대로 호출 |
+| `exceptions.py`의 `EmbeddingLRError` 계층 | 2차 전용 예외가 필요하면 이 베이스를 **상속**한 새 클래스를 2차 소유 신규 모듈에 추가하면 되고, 기존 파일은 건드리지 않는다 |
+
+2차에 새로 필요한 것들(세부 라벨 목록 상수, 2차 모델 파일 경로 설정, 확장된 추론
+응답 모델 등)은 **모두 2차가 소유하는 신규 모듈**(Phase 1/3/5 산출물 하위, 예:
+`it_sub_classification/constants.py`, `it_sub_classification/models.py` 등 — 정확한
+위치는 후속 설계서에서 확정)에 정의한다. 기존 Phase 0 파일은 단 한 줄도 수정하지
+않는다 — 8절 Golden Rule 4(1차 불변 원칙)와 동일한 논리를 Phase 0에도 적용한 것이다.
+
+이에 따라 **v2는 Phase 0에 대해 어떤 신규 산출물도 만들지 않는다** — 7절 로드맵의
+Phase 0 행은 "기존 것 재사용, 추가 작업 없음"으로 표기한다.
+
 ## 3. 학습 데이터 확보 전략
 
 실 운영 로그를 사용할 수 없는 환경이므로, **LLM을 활용한 합성 데이터 생성** 방식으로 학습 데이터를 확보한다. 이 절이 설명하는 생성 방식은 프롬프트를 가지고 LLM과 상호작용하며 콘텐츠를 만드는 과정으로, **이 저장소의 Phase 1 코드가 수행하는 작업이 아니다** — 그렇게 만들어진 결과물(현재는 CSV, `data/<version>/role_*.csv`)이 "이미 확보된 원본"이고, Phase 1 코드는 그 원본을 학습 파이프라인이 쓰는 형식(JSONL)으로 변환·정리하는 것부터 시작한다([[P1_설계서_DataPreparation]] 참고).
@@ -407,7 +433,7 @@ MLP) 작업을 관련 Phase에 추가 작업으로 편입한다. 각 Phase는 `m
 
 | Phase | 명칭 | 작업 내용(1차, 변경 없음) | 2차(IT 세부, 신규) 추가 작업 | 주요 산출물 |
 |---|---|---|---|---|
-| **Phase 0** | 범위 정의 + 공통 모듈 기반 구축 | 작업 Scope 확정, Phase 1~5 공용 모듈 설계·구현 | (v2) 본 문서(Scope_Definition v2) 갱신 | Scope Definition 문서, 공통 모듈 코드+테스트 |
+| **Phase 0** | 범위 정의 + 공통 모듈 기반 구축 | 작업 Scope 확정, Phase 1~5 공용 모듈 설계·구현 | **없음 — 기존 것을 그대로 재사용**(2.3절 검토 결과, 신규 산출물 없음) | Scope Definition 문서, 공통 모듈 코드+테스트 (1차, 불변) |
 | **Phase 1** | 데이터 준비 | 원본(CSV) → JSONL 변환·조합·클래스별 3:1:1 분할 | 기존 IT role_01~05(200건) 재라벨링(멀티라벨 검토) + 신규 생성(단일+복합 라벨) 합쳐 `it_sub_*.jsonl` 3:1:1 분할(3.4절) — `세부카테고리`는 리스트 필드 | `train/test/val.jsonl`(1차, 불변) + `it_sub_{train,test,val}.jsonl`(2차, 신규) |
 | **Phase 2** | 임베딩 변환 | AIPro+ 등록·조회로 1024D 벡터 확보 | 동일 파이프라인 코드 재사용, `it_sub_*.jsonl`을 입력으로 별도 콜렉션에 등록·조회(임베딩 계산 로직 자체는 무수정) | `*_vectors.parquet`(1차) + `it_sub_*_vectors.parquet`(2차) |
 | **Phase 3** | 모델 학습 | Logistic Regression + GridSearchCV | `it_sub_*_vectors.parquet`으로 멀티라벨 MLP(4.6절, sigmoid+BCE) 학습 — 1차 트레이너와 별개 모듈 | `model_<ver>.pkl`(1차, 불변) + `model_it_sub_<ver>.pkl`(2차, 신규) |
