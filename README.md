@@ -1,18 +1,81 @@
-# embedding-lr
+# embedding-mlp
 
-기 구축된 임베딩 서비스(**AIPro+**, BGE-M3 + Qdrant, `localhost:28000`)와 가벼운
-Logistic Regression을 결합해, 실시간 쿼리를 5-class로 분류하는 파이프라인.
-자세한 배경은 [docs/Scope_Definition.md](docs/Scope_Definition.md) 참고.
+기 구축된 임베딩 서비스(**AIPro+**, BGE-M3 + Qdrant, `localhost:28000`)를 앞단에 두고,
+2단계 캐스케이드로 실시간 쿼리를 분류하는 파이프라인.
+
+1. **1차 분류(기존 유지)**: `embedding-lr`의 Logistic Regression 5-class 분류기를
+   그대로 사용해 `IT`/`DAILY`/`KNOWLEDGE`/`CREATIVE`/`ANOMALY`를 판정한다. 이 단계는
+   수정하지 않는다.
+2. **2차 분류(신규)**: 1차 결과가 `IT`인 건에 대해서만, 작은 MLP 분류기가
+   `dba`/`devops`/`os`/`network`/`middleware`/`etc` 6개 세부 카테고리로 재분류한다.
+   `NON_IT`(1차가 `IT`가 아닌 경우)는 2차 분류를 타지 않는다. **2차는 멀티라벨
+   분류**다 — 한 쿼리가 예: `DBA`이면서 동시에 `MIDDLEWARE`인 것처럼 6개 라벨 중
+   **1개 이상**을 동시에 가질 수 있다(상호 배타적이지 않음).
+
+자세한 배경은 [docs/Scope_Definition.md](docs/Scope_Definition.md) 참고(원본 5-class
+스코프이며, 2차 MLP 분류 관련 요구사항/설계 문서는 `mlp-phase0`부터 순차 추가 예정).
 
 ## 분류 대상
 
+### 1차: LR 5-class (기존, 변경 없음)
+
 | 라벨 | 설명 | 최종 판정 |
 |---|---|---|
-| `IT` | IT 5개 직무 역할 기반 기술 질의 | **IT** |
+| `IT` | IT 기술 질의 (2차 세부 분류 대상) | **IT** |
 | `DAILY` | 일상 대화 | NON_IT |
 | `KNOWLEDGE` | 일반 지식/교양 | NON_IT |
 | `CREATIVE` | 창작/엔터테인먼트 | NON_IT |
 | `ANOMALY` | 무의미 입력 | NON_IT |
+
+### 2차: MLP 멀티라벨(신규, 1차가 `IT`인 건만 대상)
+
+| 라벨 | 설명 |
+|---|---|
+| `DBA` | 데이터베이스 관리 관련 기술 질의 |
+| `DEVOPS` | CI/CD, 배포, 운영 자동화 관련 기술 질의 |
+| `OS` | 운영체제 관련 기술 질의 |
+| `NETWORK` | 네트워크 관련 기술 질의 |
+| `MIDDLEWARE` | 미들웨어(WAS, 메시지 큐 등) 관련 기술 질의 |
+| `ETC` | 그 외 IT 기술 질의 |
+
+위 6개 라벨은 상호 배타적이지 않다 — 한 쿼리에 **복수 라벨이 동시에** 붙을 수 있다.
+예: "Tomcat에서 Oracle 커넥션 풀이 자꾸 끊기는데 WAS 쪽 문제인지 DB 쪽 문제인지
+모르겠다" 같은 질의는 `MIDDLEWARE`+`DBA`가 함께 정답이다.
+
+`final_verdict`(IT/NON_IT 이진 판정) 로직은 1차 결과 기준으로 변경 없음. 2차 라벨은
+`final_verdict`에 영향을 주지 않고, `IT`로 판정된 건의 세부 분류 정보(복수 가능)로만
+추가된다.
+
+## 분류 모델: 1차 LR(유지) + 2차 MLP(신규)
+
+1차 Logistic Regression(scikit-learn, `LogisticRegression`)은 기존 그대로 사용한다.
+2차 세부 분류기만 작은 MLP로 신규 도입한다. 입력은 1차와 동일한 BGE-M3 임베딩
+벡터(1024차원), 출력은 위 6개 IT 세부 라벨(`K=6`)에 대한 **각각 독립적인** 확률이다
+(멀티라벨이므로 6개 확률의 합이 1일 필요는 없음).
+
+**왜 2차만 LR이 아니라 MLP인가**: 2차 학습 데이터는 한 레코드에 여러 라벨(예: `DBA`+
+`MIDDLEWARE`)이 동시에 붙는 멀티라벨 문제라, `dba`/`devops`/`os`/`network`/`middleware`/
+`etc` 사이의 경계가 1차(IT vs NON_IT, 상호 배타적 5-class)보다 훨씬 미묘하다. LR의
+선형 결정 경계로는 이런 겹치는 라벨 조합을 표현하기 어려워, 은닉층 2개로 비선형
+표현력을 확보한 MLP를 2차에 한해 도입한다.
+
+```
+입력(1024) → [W1: 1024×64] → ReLU → [W2: 64×64] → ReLU → [W3: 64×K] → sigmoid   (K=6)
+```
+
+- 마지막 활성화는 **sigmoid**(라벨별 독립 이진 판정, one-vs-rest)다 — softmax가 아니다.
+  클래스 간 상호 배타성을 가정하지 않으므로, 각 라벨의 sigmoid 출력이 threshold(기본
+  0.5, 검증셋 기준 튜닝 대상) 이상이면 해당 라벨을 함께 부착한다.
+- 손실 함수는 라벨별 binary cross-entropy(멀티라벨 표준)를 사용한다.
+- 은닉층 2개(64 유닛)로 구성된 소형 네트워크 — 대형 트랜스포머가 아니라 임베딩 위에
+  얹는 얕은 분류 헤드 수준을 유지한다.
+- 2차 MLP는 1차에서 `IT`로 판정된 데이터만으로 별도 학습·추론한다(1차 모델과 독립된
+  아티팩트, 예: `model_it_sub_<ver>.pkl`).
+- `K`는 라벨 수(현재 6)로, `constants.py`에 정의된 라벨 목록 크기를 그대로
+  따른다(하드코딩 금지 원칙, CLAUDE.md 4절).
+- 1차 분류기·파이프라인(Phase 1~5)은 수정하지 않고, 2차 MLP 분류기를 위한 요구사항/설계
+  문서는 `mlp-phase0` 이후 브랜치에서 CLAUDE.md 3절 절차(요구사항정의서 → 설계서 →
+  코드/테스트 → 테스트결과서)에 따라 문서화한다.
 
 ## 파이프라인
 
@@ -131,8 +194,12 @@ curl -X POST http://localhost:8080/classify \
 
 ## 진행 상황
 
-Phase 0(공통 모듈)~Phase 5(추론)까지 코드가 구현·테스트된 상태다. 5개 Phase 전체
-완료.
+Phase 0(공통 모듈)~Phase 5(추론)까지 코드가 구현·테스트된 상태다(`embedding-lr` 기준
+5개 Phase 전체 완료, 1차 LR 분류기는 수정하지 않고 그대로 유지). 이후 `mlp-phase0`
+브랜치부터 1차 결과가 `IT`인 건에 한해 `dba`/`devops`/`os`/`network`/`middleware`/`etc`
+6종으로 재분류하는 **2차 MLP 분류기**를 추가하는 것을 목표로 후속 작업을 진행한다 —
+현재는 README 갱신(스코프 선언) 단계이며, 상세 요구사항정의서/설계서는 아직 작성
+전이다.
 
 | 영역 | 상태 | 비고 |
 |---|---|---|
