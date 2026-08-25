@@ -19,8 +19,10 @@ Phase별 문서가 폐기되어 물리적 충돌이 없으므로, [[Scope_Defini
 Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jsonl`/
 `it_sub_test.jsonl`/`it_sub_val.jsonl`을 만든다([[Architecture_Design]] 9.3절 데이터
 흐름의 `A2`→`C2` 구간). 1차가 `IT`로 판정한 쿼리에 대해서만 동작하는 세부 분류기
-(`DBA`/`DEVOPS`/`OS`/`NETWORK`/`MIDDLEWARE`/`ETC`, 멀티라벨)의 학습 데이터이며, 이
+(`DBA`/`DEVOPS`/`OS`/`NETWORK`/`MIDDLEWARE`, 5종 멀티라벨)의 학습 데이터이며, 이
 데이터의 라벨 품질(특히 복합 라벨의 정확성)이 2차 파이프라인 전체의 신뢰도를 좌우한다.
+(당초 6번째 라벨로 검토했던 `ETC`는 학습 라벨에서 제외 — [[Scope_Definition]] 2.2절
+v2.1, 2절 참고.)
 
 ## 2. 배경 및 제약
 
@@ -29,7 +31,9 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
   역할**을 대표하지만, 2차는 멀티라벨 전제이므로 "역할=유일한 정답 라벨"로 그대로
   재사용할 수 없다([[Scope_Definition]] 2.2절). 각 레코드를 재검토해 추가로 해당하는
   라벨이 있는지 확인·부여하는 **재라벨링**이 필요하다.
-- `ETC` 라벨은 기존 5개 역할에 대응하는 데이터가 없으므로 전량 신규 생성해야 한다.
+- **`ETC`는 학습 라벨이 아니다(v2.1)**: 5개 라벨 확률이 모두 threshold 미만이면 파생
+  "미분류" 상태로 처리하므로, ETC 전용 데이터를 수집하지 않는다([[Scope_Definition]]
+  2.2절). 이 문서의 데이터 확보 범위는 5개 라벨에만 한정된다.
 - 역할 간 경계에 걸친 **복합 라벨** 질의(예: DBA+MIDDLEWARE, OS+NETWORK)는 단일 라벨
   데이터만으로는 학습될 수 없는 패턴이므로, 의도적으로 신규 생성해야 한다
   ([[Scope_Definition]] 3.4절 ②).
@@ -49,7 +53,7 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 |---|---|
 | 1 | 기존 `role_01~05_*.jsonl`(200건) 재라벨링 — 각 레코드에 `세부카테고리`(리스트) 부여, 주 라벨 외 추가 해당 라벨 재검토 |
 | 2 | 재라벨링 근거 및 결과를 검토서로 기록 (`P1_검토서_ITSubRelabeling.md`, [[CLAUDE.md]] 7절 DocType `검토서`) |
-| 3 | 신규 단일 라벨 데이터 반영 — 라벨당(6종) 목표 보유량 확보, `ETC` 전량 포함 |
+| 3 | 신규 단일 라벨 데이터 반영 — 라벨당(5종) 목표 보유량 확보 |
 | 4 | 신규 복합 라벨 데이터 반영 — 역할 간 경계 질의, 전체의 약 20~30%가 라벨 2개 이상 |
 | 5 | 재라벨링 결과 + 신규 생성 데이터를 통합해 `it_sub_data.jsonl`로 저장(`JsonlRepository` 재사용) |
 | 6 | `it_sub_data.jsonl` → `it_sub_train.jsonl`/`it_sub_test.jsonl`/`it_sub_val.jsonl` **반복 계층화 3:1:1 분할**(신규 로직) |
@@ -60,7 +64,7 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 | 항목 | 담당 |
 |---|---|
 | 질의·응답 콘텐츠 생성(신규 단일/복합 라벨, LLM 프롬프트 기반) | 코드 밖(사람/에이전트가 프롬프트로 직접 수행) — [[Scope_Definition]] 3.4절 |
-| 신규 프롬프트 파일 작성(`prompt/roles/10_etc.md`, `11_composite.md`) | 코드 밖 — 프롬프트 설계 산출물 |
+| 신규 프롬프트 파일 작성(`prompt/roles/11_composite.md`) | 코드 밖 — 프롬프트 설계 산출물 |
 | 1차 `role_01~09_*.jsonl`/`data.jsonl`/`train/test/val.jsonl` 생성·수정 | 1차(불변) — 이 문서의 범위 아님 |
 | 임베딩 변환, 멀티라벨 MLP 학습, 평가 | `P1_설계서_ITSubClassification.md` 이후 산출물([[Architecture_Design]] 9.3절 `D2`~`F2`) |
 
@@ -78,7 +82,7 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 
 1차 `role_*.csv`/`role_*.jsonl`과 동일한 원시 스키마(`질의`/`응답`/`카테고리`="IT")로
 확보되며, 단일 라벨분과 복합 라벨분을 구분할 수 있는 형태로 전달된다(정확한 원본 파일
-명명은 `P1_설계서_ITSubClassification.md`에서 확정 — 예: `role_10_etc.*`, `role_11_composite.*`).
+명명은 `P1_설계서_ITSubClassification.md`에서 확정 — 예: `role_11_composite.*`).
 
 ### 4.2 출력 스키마(`it_sub_*.jsonl`)
 
@@ -89,7 +93,7 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 | `질의` | string | 1차와 동일 기준 |
 | `응답` | string | 1차와 동일 기준 |
 | `카테고리` | string (enum) | `IT` 고정 (2차 대상은 항상 IT) |
-| `세부카테고리` | array\<string\> | `DBA`/`DEVOPS`/`OS`/`NETWORK`/`MIDDLEWARE`/`ETC` 중 **1개 이상**, 중복 원소 금지 |
+| `세부카테고리` | array\<string\> | `DBA`/`DEVOPS`/`OS`/`NETWORK`/`MIDDLEWARE` 중 **1개 이상**, 중복 원소 금지 |
 
 예:
 ```json
@@ -106,17 +110,17 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 
 ### 4.4 신규 데이터 통합
 
-- 신규 단일 라벨 데이터(라벨당 목표 보유량 확보용, `ETC` 포함)와 신규 복합 라벨 데이터를
+- 신규 단일 라벨 데이터(라벨당 목표 보유량 확보용)와 신규 복합 라벨 데이터를
   각각 4.2 스키마로 변환한 뒤, 재라벨링된 200건과 함께 `it_sub_data.jsonl`로 재조합한다.
 - 목표 양성(positive) 건수: 라벨당 200건 이상(단일+복합 합산), [[Scope_Definition]]
-  3.4절 표 기준. 총 고유 레코드 수는 라벨 중복 기여로 인해 1,200건보다 적을 수 있다.
+  3.4절 표 기준. 총 고유 레코드 수는 라벨 중복 기여로 인해 1,000건보다 적을 수 있다.
 - 전체 레코드 중 약 20~30%가 라벨 2개 이상(복합 라벨)을 갖도록 한다.
 - **라벨 조합별 최소 건수(신규)**: 라벨당 개별 건수(위 목표)만으로는 부족하다 — 멀티라벨
   MLP가 실제로 학습해야 하는 것은 각 라벨의 주변 확률이 아니라 **라벨 조합의 동시 경계**이므로,
-  [[Scope_Definition]] 3.4절이 의도한 "실무에서 흔히 발생하는" 조합(예: `DBA`+`MIDDLEWARE`,
-  `OS`+`NETWORK`, `DEVOPS`+`OS`, `NETWORK`+`MIDDLEWARE`)은 조합당 **최소 30~50건**을
-  목표로 한다. 이 최소치를 만족하지 못하는 조합이 있으면 해당 조합만 추가 생성한다(4.5절
-  참고 — Phase 4 평가 결과에 따른 반복 보강 절차와 연계).
+  [[Scope_Definition]] 3.4절이 의도한 5개 라벨의 `C(5,2)=10`개 실무 빈발 조합(예:
+  `DBA`+`MIDDLEWARE`, `OS`+`NETWORK`, `DEVOPS`+`OS`, `NETWORK`+`MIDDLEWARE` 등)은 조합당
+  **최소 30~50건**을 목표로 한다. 이 최소치를 만족하지 못하는 조합이 있으면 해당 조합만
+  추가 생성한다(4.5절 참고 — Phase 4 평가 결과에 따른 반복 보강 절차와 연계).
 
 ### 4.5 데이터 규모의 반복 보강 절차(신규)
 
@@ -147,13 +151,13 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 | 항목 | 기준 |
 |---|---|
 | 결측값 | `질의`/`응답`/`카테고리`/`세부카테고리` 공백·NULL·빈 리스트 0건 |
-| 라벨 값 유효성 | `세부카테고리`의 모든 원소가 6개 정의 라벨 중 하나, 중복 원소 0건 |
+| 라벨 값 유효성 | `세부카테고리`의 모든 원소가 5개 정의 라벨 중 하나, 중복 원소 0건 |
 | 중복 레코드 | (`질의`, `세부카테고리` 정렬 조합) 기준 중복 0건 |
 | 인코딩/개행 | 1차와 동일 — UTF-8, BOM 없음, LF만 허용, JSON 유효성(매 줄 파싱 가능) |
 | 라벨별 최소 건수 | 라벨당 양성 건수 ≥ 200 |
 | 라벨 조합별 최소 건수 | [[Scope_Definition]] 3.4절이 명시한 실무 빈발 조합(예: `DBA`+`MIDDLEWARE`, `OS`+`NETWORK`, `DEVOPS`+`OS`, `NETWORK`+`MIDDLEWARE`) 각각 ≥ 30~50건 (4.4절) |
 | 복합 라벨 비율 | 전체 레코드의 20~30%가 라벨 2개 이상 |
-| Split 라벨 커버리지 | `it_sub_train/test/val.jsonl` 각각에 6개 라벨이 모두 1건 이상 존재 |
+| Split 라벨 커버리지 | `it_sub_train/test/val.jsonl` 각각에 5개 라벨이 모두 1건 이상 존재 |
 | 재현성 | 동일 입력으로 재실행 시 `it_sub_data.jsonl`, `it_sub_{train,test,val}.jsonl`가 바이트 단위로 동일(분할 시드 고정) |
 | 1차 불변 | `role_01~09_*.jsonl`/`data.jsonl`/`train/test/val.jsonl`(1차) 파일이 이 작업 전후로 바이트 단위 동일 |
 
@@ -172,13 +176,12 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 ## 7. 완료 기준 (Acceptance Criteria)
 
 - [ ] `role_01~05_*.jsonl` 200건 전량 재라벨링 완료, 재라벨링 근거 검토서 작성
-- [ ] 신규 단일 라벨 데이터에 `ETC` 라벨 포함 반영
 - [ ] 신규 복합 라벨 데이터 반영, 전체 레코드의 20~30%가 라벨 2개 이상
-- [ ] 라벨별 양성 건수 ≥ 200건 (6개 라벨 전항목)
+- [ ] 라벨별 양성 건수 ≥ 200건 (5개 라벨 전항목)
 - [ ] 실무 빈발 라벨 조합(4.4절) 각각 ≥ 30~50건 확보
 - [ ] Phase 3·4 1회 실행 후 라벨/조합별 Precision·Recall 검토, 미달 라벨/조합에 한해 증분 보강 1회 이상 수행(4.5절 반복 보강 절차)
 - [ ] `it_sub_data.jsonl` 생성, JSON 파싱 실패 행 0건, 5절 비기능 요구사항 전항목 통과
-- [ ] `it_sub_train/test/val.jsonl` 반복 계층화 3:1:1 분할, 각 split에 6개 라벨 모두 1건 이상 존재
+- [ ] `it_sub_train/test/val.jsonl` 반복 계층화 3:1:1 분할, 각 split에 5개 라벨 모두 1건 이상 존재
 - [ ] 동일 입력으로 재실행 시 분할 결과 동일함을 확인(시드 고정 검증)
 - [ ] 1차 산출물(`role_01~09_*.jsonl`/`data.jsonl`/`train/test/val.jsonl`) 무변경 확인
 

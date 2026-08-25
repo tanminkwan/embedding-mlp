@@ -269,15 +269,18 @@ embedding-lr/
 [[Scope_Definition]] 2.2절·2.3절·3.4절·4.6절·7절에서 확정한 결정을 코드 구조 관점에서
 정리한다. **1차(1~8절)는 이 확장으로 어떤 파일도 수정되지 않는다** — 8절 Golden Rule 4
 "1차 불변 원칙". 상세 요구사항/설계는 이 절을 골격으로 후속
-`요구사항정의서_ITSubClassification.md`/`설계서_ITSubClassification.md`(Phase 접두사
-없음, 0절 참고)에서 구체화한다.
+`P1_요구사항정의서_ITSubClassification.md`/`P1_설계서_ITSubClassification.md`(Phase
+번호 재사용, 0절 참고)에서 구체화한다.
 
 ### 9.1 개요
 
 1차 LR이 `IT`로 판정한 쿼리에 한해서만 2차 멀티라벨 MLP를 추가로 태우는 **캐스케이드**
-구조다. 2차 라벨(`DBA`/`DEVOPS`/`OS`/`NETWORK`/`MIDDLEWARE`/`ETC`)은 상호 배타적이지
+구조다. 2차 라벨(`DBA`/`DEVOPS`/`OS`/`NETWORK`/`MIDDLEWARE`, 5종)은 상호 배타적이지
 않으며 라벨별 독립 이진 판정(one-vs-rest, sigmoid+BCE)을 쓴다 — 1차의 단일 라벨
-softmax 방식과 다른 별도 모델 아티팩트다.
+softmax 방식과 다른 별도 모델 아티팩트다. 당초 검토했던 6번째 라벨 `ETC`는 학습
+라벨로 두지 않는다 — sigmoid 구조상 5개 라벨 확률이 모두 threshold 미만이면 그
+자체로 "5종 어디에도 해당하지 않음"을 의미하므로, 별도 데이터 없이 **파생 상태**로
+처리한다([[Scope_Definition]] 2.2절 v2.1).
 
 ### 9.2 모듈 구조 — 2차 전용 신규 패키지
 
@@ -290,7 +293,7 @@ softmax 방식과 다른 별도 모델 아티팩트다.
 src/embedding_lr/
 ├── (1차 모듈 전체 — 2절 기준, 무수정)
 └── it_sub_classification/        # 2차 신규 패키지 — 1차 파일 무수정, 공용 추상화만 재사용
-    ├── constants.py               # SUB_LABELS(6종), 임계값 등 2차 전용 상수(1차 constants.py에 add하지 않음)
+    ├── constants.py               # SUB_LABELS(5종), 임계값 등 2차 전용 상수(1차 constants.py에 add하지 않음)
     ├── dataset/
     │   └── split.py               # 반복 계층화(iterative stratification) 3:1:1 분할 — 1차 dataset/split.py와 별개(단일 라벨 전제 재사용 불가)
     ├── training/
@@ -298,11 +301,11 @@ src/embedding_lr/
     ├── evaluation/
     │   └── metrics.py             # Subset Accuracy/라벨별 P·R·F1(micro/macro)/Hamming Loss
     └── inference/
-        └── classifier.py          # 1차가 IT로 판정한 건만 로드해 재분류, sub_categories/sub_probabilities 산출
+        └── classifier.py          # 1차가 IT로 판정한 건만 로드해 재분류, sub_categories(threshold 미만 5개 전부면 빈 리스트="미분류")/sub_probabilities 산출
 ```
 
 - 재라벨링(기존 IT role 데이터 재검토) 산출물은 코드가 아니라 데이터/문서 산출물이므로
-  이 패키지가 아니라 `data/<version>/it_sub_*.jsonl` + 검토서(`검토서_ITSubRelabeling.md`류)로
+  이 패키지가 아니라 `data/<version>/it_sub_*.jsonl` + 검토서(`P1_검토서_ITSubRelabeling.md`류)로
   남는다.
 - CLI는 1차와 동일한 워크플로우 규약(3절)을 따르는 신규 진입점을 추가한다(예:
   `cli/run_it_sub_train.py`, `cli/run_it_sub_eval.py` — 정확한 파일명은 설계서에서 확정),
