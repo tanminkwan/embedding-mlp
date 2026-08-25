@@ -131,24 +131,28 @@ AIPro+의 지식 저장소 기능(도메인/콜렉션/추적성)이 그대로 �
 **기존 것에 추가(add)만 가능하고, 기존 기능(필드/시그니처/검증 규칙)을 변경하는 것은
 불가**하다는 관점으로 2차 확장에 필요한 것이 있는지 실제 코드를 검토했다.
 
-**결론: 추가가 전혀 필요 없다 — Phase 0는 1차와 완전히 동일하게 그대로 재사용한다.**
-이미 충분히 일반적으로 설계돼 있어 그대로 재사용 가능한 지점:
+**결론: Phase 0는 대부분 1차와 동일하게 재사용하되, 도메인 모델/분류기 Protocol
+2곳은 재사용이 불가능하다는 것이 `P1_설계서_ITSubClassification.md` 작성 중 실제
+시그니처 검토로 확인됐다(아래 표 상단 두 행 — 최초 검토 시의 판단을 정정).**
 
-| Phase 0 요소 | 재사용 가능 근거 |
+| Phase 0 요소 | 실제 재사용 가능 여부 |
 |---|---|
-| `domain/interfaces.py`의 `Classifier` Protocol | `predict_proba(X) -> list[dict[str, float]]` 시그니처가 "확률 합계 1"을 강제하지 않는다 — 2차 멀티라벨 MLP도 이 Protocol을 그대로 구현하면 된다. 신규 Protocol 불필요 |
-| `domain/models.py`의 `KnowledgeRecord`/`KnowledgeItem` | `source` 필드는 여전히 `IT`(1차 카테고리) 값만 담으면 되고, 2차 세부 라벨(리스트)은 AIPro+에 보내지 않고 로컬 데이터 파일에서만 관리한다 — 검증 규칙 변경 불필요 |
-| `workflow/run_context.py`, `logging_config.py` | `phase` 파라미터에 `"phase3_it_sub"` 같은 새 문자열만 넘기면 되는 범용 구현 — 코드 변경 없이 그대로 호출 |
-| `exceptions.py`의 `EmbeddingLRError` 계층 | 2차 전용 예외가 필요하면 이 베이스를 **상속**한 새 클래스를 2차 소유 신규 모듈에 추가하면 되고, 기존 파일은 건드리지 않는다 |
+| `domain/interfaces.py`의 `Classifier` Protocol | **재사용 불가(정정)** — `predict_proba(X) -> list[dict[str, float]]`는 "확률 합계 1"을 강제하지 않아 문제 없지만, `fit(X, y: list[str])`의 `y`가 레코드당 라벨 1개만 표현 가능해 멀티라벨 타깃을 못 담는다. 2차는 자체 `MultiLabelClassifier` 계열 Protocol을 새로 정의한다(Phase 3 설계서에서 확정) |
+| `domain/models.py`의 `QueryRecord` | **재사용 불가(정정)** — `category: str \| None`이 `CLASS_LABELS`(1차 5종) 단일값만 허용해 `세부카테고리`(리스트)를 못 담는다. 2차는 `it_sub_classification/domain/models.py`에 `ITSubQueryRecord`를 별도 정의한다([[Architecture_Design]] 9.2절) |
+| `domain/models.py`의 `KnowledgeRecord`/`KnowledgeItem` | 재사용 가능 — `source` 필드는 여전히 `IT`(1차 카테고리) 값만 담으면 되고, 2차 세부 라벨(리스트)은 AIPro+에 보내지 않고 로컬 데이터 파일에서만 관리한다 — 검증 규칙 변경 불필요 |
+| `workflow/run_context.py`, `logging_config.py` | 재사용 가능 — `phase` 파라미터에 `"phase3_it_sub"` 같은 새 문자열만 넘기면 되는 범용 구현 — 코드 변경 없이 그대로 호출 |
+| `exceptions.py`의 `EmbeddingLRError` 계층 | 재사용 가능 — 2차 전용 예외가 필요하면 이 베이스를 **상속**한 새 클래스를 2차 소유 신규 모듈에 추가하면 되고, 기존 파일은 건드리지 않는다 |
 
-2차에 새로 필요한 것들(세부 라벨 목록 상수, 2차 모델 파일 경로 설정, 확장된 추론
-응답 모델 등)은 **모두 2차가 소유하는 신규 모듈**(Phase 1/3/5 산출물 하위, 예:
-`it_sub_classification/constants.py`, `it_sub_classification/models.py` 등 — 정확한
-위치는 후속 설계서에서 확정)에 정의한다. 기존 Phase 0 파일은 단 한 줄도 수정하지
-않는다 — 8절 Golden Rule 4(1차 불변 원칙)와 동일한 논리를 Phase 0에도 적용한 것이다.
+재사용 불가로 확인된 두 곳도 **기존 Phase 0 파일을 수정하는 게 아니라 2차 소유
+신규 모듈에 대응 타입을 새로 정의**하는 것으로 해결한다(`it_sub_classification/domain/`,
+[[Architecture_Design]] 9.2절) — 그 외 2차에 새로 필요한 것들(세부 라벨 목록 상수,
+2차 모델 파일 경로 설정 등)도 동일하게 2차 소유 신규 모듈에 정의한다. 기존 Phase 0
+파일은 이번 정정 이후에도 여전히 단 한 줄도 수정하지 않는다 — 8절 Golden Rule 4
+(1차 불변 원칙)와 동일한 논리를 Phase 0에도 적용한 것이다.
 
-이에 따라 **v2는 Phase 0에 대해 어떤 신규 산출물도 만들지 않는다** — 7절 로드맵의
-Phase 0 행은 "기존 것 재사용, 추가 작업 없음"으로 표기한다.
+이에 따라 **v2는 Phase 0 기존 파일에 대해 어떤 신규 산출물(수정)도 만들지 않는다** —
+다만 2차 전용 신규 모듈(`it_sub_classification/domain/*`)이 위 두 타입을 대체한다는
+점만 7절 로드맵 Phase 0 행에 각주로 남긴다.
 
 ## 3. 학습 데이터 확보 전략
 
@@ -469,7 +473,7 @@ MLP) 작업을 관련 Phase에 추가 작업으로 편입한다. 각 Phase는 `m
 
 | Phase | 명칭 | 작업 내용(1차, 변경 없음) | 2차(IT 세부, 신규) 추가 작업 | 주요 산출물 |
 |---|---|---|---|---|
-| **Phase 0** | 범위 정의 + 공통 모듈 기반 구축 | 작업 Scope 확정, Phase 1~5 공용 모듈 설계·구현 | **없음 — 기존 것을 그대로 재사용**(2.3절 검토 결과, 신규 산출물 없음) | Scope Definition 문서, 공통 모듈 코드+테스트 (1차, 불변) |
+| **Phase 0** | 범위 정의 + 공통 모듈 기반 구축 | 작업 Scope 확정, Phase 1~5 공용 모듈 설계·구현 | **기존 파일 수정 없음**(2.3절 검토 결과) — 단, `Classifier` Protocol/`QueryRecord`는 재사용 불가로 확인되어 2차 전용 대체 타입을 `it_sub_classification/domain/`에 신규 정의 | Scope Definition 문서, 공통 모듈 코드+테스트 (1차, 불변) |
 | **Phase 1** | 데이터 준비 | 원본(CSV) → JSONL 변환·조합·클래스별 3:1:1 분할 | 기존 IT role_01~05(200건) 재라벨링(멀티라벨 검토) + 신규 생성(단일+복합 라벨) 합쳐 `it_sub_*.jsonl` 3:1:1 분할(3.4절) — `세부카테고리`는 리스트 필드 | `train/test/val.jsonl`(1차, 불변) + `it_sub_{train,test,val}.jsonl`(2차, 신규) |
 | **Phase 2** | 임베딩 변환 | AIPro+ 등록·조회로 1024D 벡터 확보 | 동일 파이프라인 코드 재사용, `it_sub_*.jsonl`을 입력으로 별도 콜렉션에 등록·조회(임베딩 계산 로직 자체는 무수정) | `*_vectors.parquet`(1차) + `it_sub_*_vectors.parquet`(2차) |
 | **Phase 3** | 모델 학습 | Logistic Regression + GridSearchCV | `it_sub_*_vectors.parquet`으로 멀티라벨 MLP(4.6절, sigmoid+BCE) 학습 — 1차 트레이너와 별개 모듈 | `model_<ver>.pkl`(1차, 불변) + `model_it_sub_<ver>.pkl`(2차, 신규) |

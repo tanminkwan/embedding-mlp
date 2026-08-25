@@ -295,19 +295,30 @@ softmax 방식과 다른 별도 모델 아티팩트다. 당초 검토했던 6번
 ### 9.2 모듈 구조 — 2차 전용 신규 패키지
 
 2차 소유 산출물은 1차 모듈을 import/수정하지 않고 **신규 패키지 하나**로 격리한다
-(2.3절 "2차가 소유하는 신규 모듈" 원칙). 1차의 `domain.interfaces.Classifier` Protocol,
-`workflow.run_context`, `logging_config`, `exceptions.EmbeddingLRError`는 신규 추가 없이
-그대로 재사용한다(2.3절 검토 결과).
+(2.3절 "2차가 소유하는 신규 모듈" 원칙). 1차의 `workflow.run_context`, `logging_config`,
+`exceptions.EmbeddingLRError`는 신규 추가 없이 그대로 재사용한다(2.3절 검토 결과).
+다만 `domain.models.QueryRecord`(단일 `category: str`)와 `domain.interfaces.DataRepository`
+/`Classifier`는 **멀티라벨 타깃(레코드당 라벨 리스트)을 표현할 수 없어 재사용이
+불가능**하다는 것이 `P1_설계서_ITSubClassification.md` 작성 중 확인됐다 — 2.3절 검토
+당시 예상보다 재사용 가능 범위가 좁혀졌으며, 2차는 이 두 영역(도메인 모델/분류기
+Protocol)에 한해 자체 타입을 정의한다.
 
 ```
 src/embedding_lr/
 ├── (1차 모듈 전체 — 2절 기준, 무수정)
 └── it_sub_classification/        # 2차 신규 패키지 — 1차 파일 무수정, 공용 추상화만 재사용
     ├── constants.py               # SUB_LABELS(5종), 임계값 등 2차 전용 상수(1차 constants.py에 add하지 않음)
+    ├── domain/
+    │   ├── models.py               # ITSubQueryRecord(query/response/sub_categories: list[str]) — 1차 QueryRecord 재사용 불가(단일 category 전제)
+    │   └── interfaces.py           # ITSubDataRepository Protocol — 1차 DataRepository 재사용 불가(반환 타입이 list[QueryRecord] 고정)
+    ├── data_generation/
+    │   ├── it2_csv_repository.py   # ITSubDataRepository 구현체 — it2_*.csv(카테고리="LABEL1+LABEL2" 형식) 읽기 전용
+    │   └── it_sub_jsonl_repository.py  # ITSubDataRepository 구현체(JSONL) — 읽기/쓰기
     ├── dataset/
-    │   └── split.py               # 반복 계층화(iterative stratification) 3:1:1 분할 — 1차 dataset/split.py와 별개(단일 라벨 전제 재사용 불가)
+    │   ├── combine.py              # 여러 소스 병합 + 라벨/조합 건수 검증
+    │   └── split.py                # 반복 계층화(iterative stratification) 3:1:1 분할 — 1차 dataset/split.py와 별개(단일 라벨 전제 재사용 불가), 외부 라이브러리 없이 직접 구현(`P1_설계서_ITSubClassification.md` 3.1절)
     ├── training/
-    │   └── trainer.py             # Classifier Protocol 구현체 — 멀티라벨 MLP(sigmoid+BCE), 1차 training/trainer.py와 별개 아티팩트
+    │   └── trainer.py             # 멀티라벨 전용 Protocol 구현체(가칭 `MultiLabelClassifier` — 1차 `Classifier.fit(X, y: list[str])`는 라벨 리스트를 못 담아 재사용 불가, Phase 3 설계서에서 확정), 1차 training/trainer.py와 별개 아티팩트
     ├── evaluation/
     │   └── metrics.py             # Subset Accuracy/라벨별 P·R·F1(micro/macro)/Hamming Loss
     └── inference/

@@ -181,6 +181,7 @@ curl -X POST http://localhost:8080/classify \
 
 | [P1_요구사항정의서_ITSubClassification.md](docs/P1_요구사항정의서_ITSubClassification.md) | **2차**(IT 세부 분류) Phase 1 데이터 준비 요구사항 정의서 — 기존 IT 데이터 재라벨링 + 신규 단일/복합 라벨 데이터 → `it_sub_*.jsonl` |
 | [P1_검토서_ITSubRelabeling.md](docs/P1_검토서_ITSubRelabeling.md) | 기존 IT role 데이터(200건) 재라벨링 검토서 — 판단 기준, 파일별 보조 라벨 부여 근거(21건, 10.5%) |
+| [P1_설계서_ITSubClassification.md](docs/P1_설계서_ITSubClassification.md) | **2차** Phase 1 데이터 준비 설계 — `ITSubQueryRecord`/`ITSubDataRepository`(1차 타입 재사용 불가로 신규 정의), 반복 계층화 분할 알고리즘, `it2_*.csv`→`it_sub_data.jsonl` 변환 규칙 |
 
 1차 Phase별 문서가 폐기되어 물리적 충돌이 없으므로, 2차 신규 문서도 Phase 번호를 그대로
 재사용한다(예: `P1_요구사항정의서_ITSubClassification.md`) — 내용은 1차와 공통인 불변
