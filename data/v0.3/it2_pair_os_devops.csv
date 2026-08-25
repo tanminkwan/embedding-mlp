@@ -1,0 +1,313 @@
+"질의","응답","카테고리"
+"컨테이너 로그 수집 에이전트(fluentd/filebeat)가 갑자기 로그를 못 읽어와. 디스크는 남아있는데 뭘 봐야 돼?","- inotify watch 개수 초과 가능성 높음
+- 확인
+```
+cat /proc/sys/fs/inotify/max_user_watches
+cat /proc/sys/fs/inotify/max_user_instances
+```
+- 파드 많은 노드에서 사이드카가 컨테이너 로그 파일마다 watch 잡다 보면 순식간에 찬다
+- 늘리기
+```
+sysctl -w fs.inotify.max_user_watches=524288
+echo ""fs.inotify.max_user_watches=524288"" >> /etc/sysctl.d/99-inotify.conf
+```
+- 놓치기 쉬운 포인트: sysctl.d에 안 박아두면 재부팅하고 원상복구됨","OS+DEVOPS"
+"도커 storage driver로 overlay2 쓰려는데 컨테이너가 안 뜨고 에러나. 커널 쪽에서 뭐 확인해야 돼?","- overlay 커널 모듈 로드됐는지 확인
+```
+lsmod | grep overlay
+modprobe overlay
+```
+- /var/lib/docker가 xfs면 ftype=1 필요
+```
+xfs_info /var/lib/docker | grep ftype
+```
+- ftype=0이면 overlay2 못 쓰고 devicemapper로 fallback되거나 데몬 기동 실패
+- 해결은 파일시스템 재생성(mkfs.xfs -n ftype=1)밖에 없음, in-place 변경 불가","OS+DEVOPS"
+"kubelet이 자꾸 안 뜨고 로그에 cgroup driver 관련 에러 찍혀. 뭐 때문이야?","- 도커/containerd cgroup driver랑 kubelet cgroup driver 불일치
+- 확인 순서
+1. 도커 설정
+```
+docker info | grep -i cgroup
+```
+2. kubelet 설정
+```
+cat /var/lib/kubelet/config.yaml | grep cgroupDriver
+```
+3. 둘 다 systemd로 통일 (RHEL8+는 systemd가 기본, cgroupfs 쓰면 나중에 문제됨)
+- daemon.json에 ""exec-opts"": [""native.cgroupdriver=systemd""] 추가하고 도커 재시작
+- 놓치기 쉬운 포인트: 이거 바꾸면 기존 컨테이너 다 재생성해야 함","OS+DEVOPS"
+"PVC 마운트한 파드가 Permission denied로 안 뜨는데 권한은 맞게 준 것 같아. 뭐가 문제일까?","- SELinux enforcing 상태에서 볼륨 라벨(svirt_sandbox_file_t) 안 맞는 케이스
+- 확인 순서
+1.
+```
+getenforce
+ausearch -m avc -ts recent
+```
+2. AVC denied 로그 있으면 SELinux가 막은 거
+3. 임시 확인용
+```
+setenforce 0
+```
+로 재현되면 SELinux 확정
+- 정식 해결은 volume에 :z 또는 :Z 마운트 옵션, k8s는 securityContext에 seLinuxOptions 지정
+- permissive로 영구 전환하지 말고 라벨 맞춰줄 것","OS+DEVOPS"
+"새로 붙인 워커 노드에서만 CNI 통신이 안 돼. flannel인데 다른 노드는 정상이야.","- 그 노드 firewalld가 살아있는 경우가 제일 흔함
+- 확인 순서
+1.
+```
+systemctl status firewalld
+```
+2. 활성화돼 있으면 vxlan(8472/udp) 등 CNI 포트 막혔는지 확인
+3. k8s 노드는 보통 firewalld 자체를 끄고 iptables는 kube-proxy가 관리하게 둠
+```
+systemctl disable --now firewalld
+```
+4. 그래도 안 되면 iptables FORWARD 정책 확인
+```
+iptables -L FORWARD
+```
+- 놓치기 쉬운 포인트: 노드 재구축(kickstart 등) 스크립트에 firewalld 끄는 항목 빠지면 계속 재발함","OS+DEVOPS"
+"노드가 DiskPressure로 파드를 계속 evict해. df -h로는 여유 있는데 왜 그래?","- inode 고갈 가능성, df -h는 블록 용량만 보여줌
+- 확인
+```
+df -i
+```
+- 100% 찍히면 inode 부족, 원인은 보통 컨테이너 이미지/레이어 누적이나 로그 파일 대량 생성
+- kubelet은 imagefs.available/nodefs.available뿐 아니라 inode 기준도 eviction 조건으로 봄
+- 확인 순서
+1. df -i로 어느 파티션인지 특정
+2.
+```
+docker system df
+crictl imagefs info
+```
+3. 불필요 이미지/컨테이너 정리
+```
+docker system prune -a
+```
+- 놓치기 쉬운 포인트: /var/lib/docker와 루트 파티션이 같이 쓰면 로그 폭증 시 같이 죽음","OS+DEVOPS"
+"Elasticsearch 파드가 부팅하다가 max virtual memory areas vm.max_map_count 에러로 죽어.","- 호스트 커널 파라미터 문제, 컨테이너 안에서 못 고침
+```
+sysctl -w vm.max_map_count=262144
+echo ""vm.max_map_count=262144"" >> /etc/sysctl.d/99-es.conf
+```
+- initContainer로 노드에 적용하는 방법도 있지만 결국 호스트 sysctl 반영이 근본 해결
+- 대부분 65530 기본값이라 부족해서 나는 에러","OS+DEVOPS"
+"Jenkins에서 도커 이미지 빌드할 때 too many open files 에러로 실패해.","- 빌드 에이전트(호스트 또는 컨테이너) ulimit -n 부족
+- 확인 순서
+1.
+```
+ulimit -n
+cat /proc/<jenkins_pid>/limits | grep 'open files'
+```
+2. Jenkins가 systemd로 뜨면 서비스 파일에서 LimitNOFILE 설정해야 함, /etc/security/limits.conf는 무시됨
+```
+[Service]
+LimitNOFILE=65536
+```
+3. 도커 자체 컨테이너 안에서도 --ulimit nofile=65536:65536 넘겨줘야 함
+- systemctl daemon-reload && restart 필수, 안 하면 반영 안 됨","OS+DEVOPS"
+"k8s local PV로 쓰는 노드 디스크 용량이 부족해. LVM 확장하면 파드 재시작 없이 반영돼?","- LVM 확장은 파일시스템 레벨 작업, PV/PVC는 그 위 논리 볼륨 크기만 봄
+- 순서
+```
+lvextend -L +20G /dev/vg_data/lv_pv
+xfs_growfs /dev/vg_data/lv_pv   # ext4는 resize2fs
+```
+- hostPath/local PV는 실제 마운트 경로 용량만 늘어난 걸 그대로 보므로 파드 재시작 불필요
+- 단, PVC의 storage 요청값(spec.resources.requests.storage)은 표시값일 뿐이라 실사용량 강제 안 함","OS+DEVOPS"
+"서비스 간 통신이 가끔 타임아웃 나는데 재시도하면 되긴 돼. 뭘 의심해야 돼?","- conntrack 테이블 풀 가능성
+- 확인
+```
+cat /proc/sys/net/netfilter/nf_conntrack_count
+cat /proc/sys/net/netfilter/nf_conntrack_max
+```
+- count가 max 근접하면 새 커넥션(NodePort/Service 트래픽) drop됨
+- 늘리기
+```
+sysctl -w net.netfilter.nf_conntrack_max=1048576
+```
+- 놓치기 쉬운 포인트: 노드 메모리 대비 conntrack hash 테이블도 같이 늘려야(net.netfilter.nf_conntrack_buckets) 함, dmesg에 nf_conntrack: table full 로그 있으면 확정","OS+DEVOPS"
+"파드 여러 개 몰린 노드에서 새 프로세스 fork 자체가 안 된다는 에러 나. 뭐가 원인이야?","- kernel.pid_max 또는 유저 프로세스 제한 초과
+- 확인 순서
+1.
+```
+cat /proc/sys/kernel/pid_max
+cat /proc/loadavg
+ps -ef | wc -l
+```
+2. 컨테이너 많이 뜨는 노드는 pid_max 기본값(32768 등)으로 부족할 수 있음
+3.
+```
+sysctl -w kernel.pid_max=4194304
+```
+- kubelet의 podPidsLimit 설정도 같이 확인, 노드 전체 말고 파드별 pid 제한 걸려있을 수 있음","OS+DEVOPS"
+"파드가 자꾸 OOMKilled 나는데 리소스 limit은 안 건드렸어. 노드 자체를 봐야 될까?","- 확인 순서
+1. 파드 자체 원인 배제
+```
+kubectl describe pod <pod> | grep -A5 'Last State'
+```
+2. 노드 메모리 압박 확인
+```
+vmstat 1 5
+free -m
+```
+3. si/so(스왑) 값 오르면 노드 전체 메모리 부족, cgroup 개별 limit 문제 아님
+4. dmesg에서 oom-killer 로그로 어떤 프로세스가 죽었는지 확인
+```
+dmesg -T | grep -i oom
+```
+- 놓치기 쉬운 포인트: request 합이 노드 allocatable 넘으면 스케줄은 됐어도 실제 메모리 경쟁에서 밀려 죽음","OS+DEVOPS"
+"노드가 갑자기 NotReady 되는데 컨테이너 로그를 많이 찍는 앱을 배포한 직후부터 그래.","- 도커 로그가 journald로 가면서 / 파티션 꽉 찬 케이스
+- 확인
+```
+journalctl --disk-usage
+df -h /var/log
+```
+- journald rate limit/용량 제한 안 걸려있으면 무한정 쌓임
+- /etc/systemd/journald.conf
+```
+SystemMaxUse=2G
+```
+- kubelet도 디스크 압박되면 node.kubernetes.io/disk-pressure taint 걸고 파드 못 붙임
+- 근본적으로는 컨테이너 로그 드라이버를 json-file max-size로 제한하거나 로그 레벨 조정 필요","OS+DEVOPS"
+"etcd 클러스터가 갑자기 리더 선출을 반복하면서 불안정해. 네트워크는 문제없대.","- 노드 간 시간 동기화 깨진 경우 흔함
+- 확인
+```
+chronyc tracking
+timedatectl status
+```
+- offset 크면 etcd 하트비트/election timeout 계산이 틀어져서 리더가 계속 바뀜
+- 인증서 만료 문제도 같이 봐야 함, 시간 틀어지면 cert not yet valid 에러도 같이 남
+```
+openssl x509 -in /etc/kubernetes/pki/etcd/server.crt -noout -dates
+```
+- 확인 순서: chronyd 서비스 상태 → NTP 서버 도달 가능 여부 → 각 노드 offset 재확인","OS+DEVOPS"
+"Windows Server 컨테이너 이미지 pull 했는데 no matching manifest 에러 나. 왜 이래?","- Windows 컨테이너는 호스트 OS 커널 빌드 버전과 이미지 베이스 버전 일치 필요(Linux처럼 커널 공유 방식 아님)
+- 확인
+```
+[System.Environment]::OSVersion
+docker version
+```
+- 호스트가 2019(1809)인데 이미지가 2022(ltsc2022) 베이스면 그냥 못 뜸
+- 해결은 호스트 OS 버전에 맞는 태그로 이미지 다시 받거나 Hyper-V isolation(--isolation=hyperv)으로 실행","OS+DEVOPS"
+"AIX 서버에 도커 설치해서 컨테이너로 운영하자는 얘기 나왔는데 되는 거야?","- 안 됨, 도커/containerd는 Linux 네임스페이스·cgroup 기반이라 AIX 커널에서 못 돌아감
+- AIX는 WPAR(Workload Partition)라는 자체 경량 가상화가 있지만 OCI 컨테이너 런타임과 호환 안 됨
+- 컨테이너 전환하려면 워크로드를 RHEL/Linux로 옮기는 게 전제조건","OS+DEVOPS"
+"도커 컨테이너 생성이 no space left on device로 실패하는데 df -h로는 공간 넉넉해.","- devicemapper storage driver 쓰면 LVM thin pool 별도 용량 관리됨, 루트 파티션 용량과 무관
+- 확인
+```
+lvs
+docker info | grep -A10 'Storage Driver'
+```
+- Data Space Used가 Data Space Total에 근접하면 thin pool 자체가 찬 것
+- 확장
+```
+lvextend -L +50G /dev/docker-vg/thinpool
+```
+- 근본적으로는 overlay2로 마이그레이션 권장, devicemapper는 RHEL7 이후 지원 종료 추세","OS+DEVOPS"
+"Helm으로 배포한 앱이 hostPath 볼륨에 파일 쓰기를 못 해. 디렉토리 권한은 777로 줬는데.","- SELinux context 문제일 가능성 큼, 777 줘도 컨텍스트 안 맞으면 막힘
+- 확인
+```
+ls -Z /data/app
+ausearch -m avc -ts recent
+```
+- 라벨이 default_t 등으로 되어 있으면 컨테이너 프로세스(svirt_lxc_file_t)가 접근 못 함
+- 해결
+```
+chcon -Rt svirt_sandbox_file_t /data/app
+```
+또는 semanage fcontext로 영구 등록
+- Helm values에서 volume mount할 때 securityContext.seLinuxOptions로 맞춰주는 방법도 있음","OS+DEVOPS"
+"RHEL 커널 패치하고 재부팅했더니 도커 데몬이 안 떠. 패치 전엔 멀쩡했어.","- 새 커널에 overlay 모듈이 자동 로드 안 되거나 커널 버전이 도커 지원 범위 벗어난 경우
+- 확인 순서
+1.
+```
+uname -r
+lsmod | grep overlay
+journalctl -u docker -n 50
+```
+2. overlay 관련 에러면
+```
+modprobe overlay
+```
+후 도커 재시작
+3. 안 되면 grub에서 이전 커널로 부팅해서 임시 복구
+- 패치 적용 전에 스테이징에서 커널-도커 호환성 확인하는 절차가 빠졌던 게 근본 원인","OS+DEVOPS"
+"도커 데몬이 서버 재부팅할 때마다 자동으로 안 떠. systemd로 어떻게 관리해?","- enable 안 돼 있으면 재부팅해도 안 뜸
+```
+systemctl enable docker
+systemctl is-enabled docker
+```
+- 죽었을 때 자동 재시작하려면 unit 파일에 Restart 옵션
+```
+[Service]
+Restart=on-failure
+RestartSec=5s
+```
+- daemon.json 수정 후엔 꼭
+```
+systemctl daemon-reload
+systemctl restart docker
+```
+순서 지켜야 반영됨","OS+DEVOPS"
+"GitLab Runner가 도커 소켓 마운트 방식(DooD)으로 도는데 permission denied로 도커 명령 실패해.","- runner 프로세스 계정이 docker 그룹에 없는 경우
+- 확인
+```
+groups gitlab-runner
+ls -l /var/run/docker.sock
+```
+- 소켓 owner가 root:docker인데 gitlab-runner가 docker 그룹 아니면 막힘
+```
+usermod -aG docker gitlab-runner
+systemctl restart gitlab-runner
+```
+- 컨테이너로 러너 띄운 경우엔 -v /var/run/docker.sock:/var/run/docker.sock 마운트하면서 컨테이너 내부에도 동일 gid로 그룹 맞춰줘야 함
+- 놓치기 쉬운 포인트: usermod 후 세션/서비스 재시작 안 하면 그룹 변경 반영 안 됨","OS+DEVOPS"
+"k8s에서 CPU manager static policy 쓰려는데 NUMA/hugepage랑 무슨 관계가 있는 거야?","- static policy는 Guaranteed 파드에 전용 코어(exclusive CPU)를 배정하는데, 이때 NUMA 노드 걸쳐서 배정되면 메모리 접근 지연 생김
+- 호스트에서 NUMA 토폴로지 확인
+```
+numactl --hardware
+lscpu | grep NUMA
+```
+- hugepage는 별도 커널 파라미터로 사전 예약 필요
+```
+sysctl -w vm.nr_hugepages=1024
+```
+- k8s가 hugepage를 리소스로 스케줄링하려면 노드에 미리 페이지 확보돼 있어야 하고, 파드 spec에 resources.limits에 hugepages-2Mi 명시해야 함","OS+DEVOPS"
+"Prometheus node-exporter 파드에 hostPID, hostNetwork 왜 필요한 거야? 보안팀이 문제 삼아.","- 호스트 커널 레벨 메트릭(프로세스 상태, 네트워크 인터페이스 통계)은 컨테이너 네임스페이스 안에서는 못 봄
+- hostPID 없으면 호스트 전체 프로세스 수/상태 못 읽고, hostNetwork 없으면 호스트 NIC 트래픽 카운터 못 읽음
+- 보안팀 대응은 필요한 것만 최소로: hostPID 대신 /proc를 hostPath로 마운트하는 방식으로 대체 가능한 메트릭도 있음
+- PodSecurityPolicy/PSA 쓰면 privileged 네임스페이스만 예외 허용하고 나머지 워크로드는 restricted 유지하는 식으로 분리","OS+DEVOPS"
+"메모리 여유 있는데 노드가 swap out을 계속 해. kubelet 쪽에서 뭔가 막아야 되지 않아?","- vm.swappiness 값이 높으면 여유 메모리 있어도 커널이 적극적으로 swap
+- 확인
+```
+cat /proc/sys/vm/swappiness
+free -m
+```
+- k8s는 원래 스왑 켜진 노드를 지원 안 해서 kubelet이 --fail-swap-on=true면 swap 켜진 노드에서 kubelet 자체가 안 뜸
+- 확인 순서
+1. swapon --show로 스왑 활성 여부 확인
+2. 꺼야 하면
+```
+swapoff -a
+```
+/etc/fstab에서 스왑 항목도 주석 처리
+- 놓치기 쉬운 포인트: swapoff -a는 재부팅하면 fstab 살아있으면 다시 켜짐","OS+DEVOPS"
+"이미지 pull이 no space left on device로 실패하는데 컨테이너는 몇 개 안 떠 있어.","- /var 파티션이 별도 LVM 볼륨인 경우 루트랑 별개로 꽉 찬 것일 수 있음
+- 확인
+```
+df -h /var/lib/docker
+lvs
+vgs
+```
+- VG에 여유공간 있으면
+```
+lvextend -L +30G /dev/vg_data/lv_var
+xfs_growfs /dev/vg_data/lv_var
+```
+- VG 자체가 꽉 찼으면 물리 볼륨(PV) 추가 필요
+```
+pvcreate /dev/sdb1
+vgextend vg_data /dev/sdb1
+```
+- 이미지 레이어 정리(docker image prune -a)는 임시방편, 근본은 스토리지 용량 설계 문제","OS+DEVOPS"

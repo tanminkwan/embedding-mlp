@@ -1,0 +1,203 @@
+"질의","응답","카테고리"
+"컨테이너에서 Tomcat 힙 설정(-Xmx)이랑 K8s memory limit 관계 어떻게 잡아야 돼?","- Xmx는 컨테이너 memory limit의 70~75% 이하로 잡아
+- 나머지는 metaspace, thread stack, native memory, GC 오버헤드용
+- JDK 10+는 -XX:+UseContainerSupport 기본 켜져 있어서 limit 인식하지만 명시적으로 Xmx 박는 게 안전
+- limit=2Gi면 Xmx 1400m 정도로 시작
+- 놓치기 쉬운 포인트: request랑 limit 다르게 잡으면 JVM은 limit 기준으로 계산하니까 request만 보고 튜닝하면 안 됨","MIDDLEWARE+DEVOPS"
+"readiness probe로 WAS 헬스체크 URL 잡을 때 뭘 봐야 돼?","- Tomcat은 /manager/status나 별도 health 엔드포인트, JEUS는 자체 상태체크 서블릿 만들어서 씀
+- probe는 단순 TCP 포트 체크 말고 실제 요청 처리 가능 여부 확인하는 HTTP 체크로 잡아야 함
+- initialDelaySeconds는 WAS 기동 시간(클래스로딩, DB풀 초기화) 감안해서 여유있게
+```yaml
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+```
+- 놓치기 쉬운 포인트: DB 커넥션풀 초기화 전에 200 주는 헬스체크면 트래픽 받고 바로 에러남","MIDDLEWARE+DEVOPS"
+"Prometheus로 Tomcat 커넥션풀/스레드풀 메트릭 어떻게 뽑아?","- JMX Exporter를 사이드카나 java agent로 붙여서 JMX MBean(Catalina:type=ThreadPool, DataSource pool) 노출
+- JEUS는 JEUS Manager JMX 통해서 같은 방식
+- 노출된 /metrics를 Prometheus가 scrape
+```yaml
+- job_name: 'tomcat'
+  static_configs:
+    - targets: ['was-pod:9404']
+```
+- 놓치기 쉬운 포인트: JMX exporter yaml에 MBean 패턴 안 맞으면 메트릭 자체가 안 나옴, curl로 /metrics 먼저 찍어서 확인","MIDDLEWARE+DEVOPS"
+"Helm values.yaml로 JEUS/Tomcat JVM 옵션 넘기는 법?","- deployment.yaml의 env에 JAVA_OPTS 주입, values.yaml에서 오버라이드
+```yaml
+env:
+  - name: JAVA_OPTS
+    value: ""{{ .Values.jvm.opts }}""
+```
+values.yaml:
+```yaml
+jvm:
+  opts: ""-Xms1g -Xmx1g -XX:+UseG1GC""
+```
+- 놓치기 쉬운 포인트: 엔트리포인트 스크립트가 JAVA_OPTS를 실제 기동커맨드에 넣는지 Dockerfile CMD/ENTRYPOINT 확인해야 함, 안 그러면 값 무시됨","MIDDLEWARE+DEVOPS"
+"PreStop hook으로 WAS 정상 종료(graceful shutdown) 어떻게 구현해?","- SIGTERM 받고 grace period 지나면 SIGKILL 날아가니까 그 안에 처리중 요청 끝내야 함
+- preStop에서 WAS 자체 graceful shutdown 명령(JEUS 서비스 중지, Tomcat catalina.sh stop) 호출
+```yaml
+lifecycle:
+  preStop:
+    exec:
+      command: [""/bin/sh"", ""-c"", ""/app/bin/shutdown.sh && sleep 10""]
+terminationGracePeriodSeconds: 60
+```
+- 놓치기 쉬운 포인트: Ingress/LB가 endpoint 제거하는 데 걸리는 시간보다 preStop sleep이 짧으면 종료중 서버로 트래픽 계속 들어옴","MIDDLEWARE+DEVOPS"
+"컨테이너 CPU limit 낮게 잡으면 JVM GC한테 왜 안 좋아?","- JVM은 UseContainerSupport로 cgroup CPU limit 보고 GC 스레드 수(ParallelGCThreads 등) 결정
+- CPU limit 1인데 노드 코어 8개면 GC 스레드 과다 생성돼서 throttling(cfs_quota) 걸림
+- throttling 걸리면 GC pause 늘어나고 응답 지연으로 이어짐
+- 확인: kubectl top pod로 사용량, /sys/fs/cgroup/cpu/cpu.stat의 nr_throttled
+- 놓치기 쉬운 포인트: request=limit로 안 맞추면 버스트 상황에서 throttle 걸려서 GC가 CPU 못 받아 늦어짐","MIDDLEWARE+DEVOPS"
+"ConfigMap으로 JEUS/Tomcat 설정파일(server.xml, jeus.xml) 관리하면 뭐 주의해야 돼?","- ConfigMap volume mount는 kubelet sync 주기(약 1분) 지나야 반영, 즉시 반영 안 됨
+- WAS는 대부분 설정 재로딩 안 하고 프로세스 재시작해야 적용되니까 변경 후 rolling restart 필요
+- Helm이면 configmap checksum을 annotation에 넣어서 변경시 자동 롤링 트리거
+```yaml
+annotations:
+  checksum/config: {{ include (print $.Template.BasePath ""/configmap.yaml"") . | sha256sum }}
+```
+- 놓치기 쉬운 포인트: subPath로 마운트하면 ConfigMap 업데이트가 파일에 반영 자체가 안 됨(symlink 갱신 안 됨)","MIDDLEWARE+DEVOPS"
+"Ingress에서 WAS 세션 어피니티(sticky session) 어떻게 걸어?","- nginx ingress는 annotation으로 쿠키 기반 어피니티 설정
+```yaml
+nginx.ingress.kubernetes.io/affinity: ""cookie""
+nginx.ingress.kubernetes.io/session-cookie-name: ""JSESSIONID""
+```
+- JEUS/Tomcat이 세션 클러스터링(replication) 지원하면 어피니티 없어도 되지만, 안 쓰면 Pod 재시작/스케일다운 시 세션 끊김
+- 놓치기 쉬운 포인트: HPA로 Pod 수 계속 바뀌는 환경에서 어피니티만 걸고 클러스터링 안 하면 스케일다운 때 세션 다 날아감","MIDDLEWARE+DEVOPS"
+"WAS 로그 ELK로 보내는 사이드카 패턴 어떻게 구성해?","- Pod 안에 Filebeat/Fluentd 사이드카 추가, emptyDir 볼륨으로 WAS 로그 디렉토리 공유
+```yaml
+volumes:
+  - name: log-vol
+    emptyDir: {}
+containers:
+  - name: was
+    volumeMounts:
+      - {name: log-vol, mountPath: /jeus/logs}
+  - name: filebeat
+    volumeMounts:
+      - {name: log-vol, mountPath: /jeus/logs}
+```
+- 놓치기 쉬운 포인트: WAS 로그가 멀티라인 스택트레이스면 Filebeat multiline 설정 안 하면 한 줄씩 쪼개져서 Kibana에서 못 봄","MIDDLEWARE+DEVOPS"
+"Jenkins에서 WAR 배포 후 헬스체크 확인하고 다음 스텝 넘어가게 하려면?","- 배포 스크립트에서 curl로 상태체크 URL 폴링, 실패시 파이프라인 fail 처리
+```groovy
+sh '''
+for i in $(seq 1 30); do
+  curl -sf http://was:8080/health && exit 0
+  sleep 5
+done
+exit 1
+'''
+```
+- K8s면 kubectl rollout status로 대체 가능
+```
+kubectl rollout status deployment/was-app --timeout=180s
+```
+- 놓치기 쉬운 포인트: WAR만 던지고 끝나는 스텝이면 배포는 성공인데 실제 앱 기동 실패를 못 잡음, 헬스체크 스텝 반드시 필요","MIDDLEWARE+DEVOPS"
+"HPA로 WAS Pod 늘릴 때 DB 커넥션풀 설정 왜 같이 봐야 돼?","- Pod마다 datasource maxPoolSize 있어서 HPA maxReplicas * maxPoolSize가 DB max_connections 넘으면 배포 자체가 DB 커넥션 부족으로 장애남
+- 예: Pod당 pool 50, HPA max 20개면 DB에 1000 커넥션 요구, DB max_connections 200이면 바로 터짐
+- 확인 순서:
+1. HPA maxReplicas 확인
+2. WAS datasource 풀 사이즈 확인
+3. DB max_connections/max_client_conn 확인
+4. 곱해서 비교
+- 놓치기 쉬운 포인트: HPA 설정한 사람과 DB 설정한 사람이 따로면 이 계산 아예 안 하는 경우 많음","MIDDLEWARE+DEVOPS"
+"Grafana에서 GC pause랑 Pod 재시작 이벤트 같이 보는 법?","- kube_pod_container_status_restarts_total(kube-state-metrics)이랑 JVM GC pause 메트릭(jvm_gc_pause_seconds, JMX exporter) 같은 대시보드에 겹쳐서 봄
+- annotation으로 Pod restart 이벤트를 GC pause 그래프에 vertical line으로 표시하면 상관관계 바로 보임
+- 놓치기 쉬운 포인트: kube-state-metrics 안 깔려있으면 restart count 자체를 못 가져오니까 먼저 배포 여부 확인","MIDDLEWARE+DEVOPS"
+"Init container로 WAS 기동 전에 DB 연결 체크하는 패턴?","```yaml
+initContainers:
+  - name: wait-for-db
+    image: busybox
+    command: ['sh', '-c', 'until nc -z db-host 5432; do sleep 2; done']
+```
+- WAS가 DB 없이 뜨면 datasource init 실패로 기동 자체가 죽거나, lazy init이면 첫 요청때 터짐
+- 놓치기 쉬운 포인트: nc는 포트만 열렸는지 체크하는거고 DB가 진짜 쿼리 받을 준비됐는지는 별도 체크(pg_isready 등) 필요","MIDDLEWARE+DEVOPS"
+"JEUS 컨테이너가 계속 OOMKilled 나는데 힙 설정이랑 뭘 봐야 돼?","- 확인 순서:
+1. kubectl describe pod로 종료 코드 137, OOMKilled 여부 확인
+2. Xmx + Metaspace + Thread stack*스레드수 + native 합이 memory limit 넘는지 계산
+3. kubectl top pod로 실제 RSS 추이 확인, GC 후에도 계속 우상향이면 leak 의심
+4. JEUS 힙덤프(-XX:+HeapDumpOnOutOfMemoryError) 떴는지 emptyDir/PVC에서 확인
+- 컨테이너 OOM은 JVM OutOfMemoryError랑 다름, JVM은 살아있는데 cgroup이 프로세스 통째로 죽이는거라 로그에 힌트 없을 수 있음
+- 놓치기 쉬운 포인트: limit만 보고 Xmx 낮췄는데 direct buffer/thread stack 감안 안 해서 여전히 OOMKilled 나는 경우 많음","MIDDLEWARE+DEVOPS"
+"무중단 배포한다고 했는데 배포때마다 순간적으로 502 뜨는데 원인이 뭐야?","- 확인 순서:
+1. readinessProbe 통과 전에 Service endpoint에 등록되는지 확인(probe 없으면 즉시 등록됨)
+2. rollingUpdate maxUnavailable/maxSurge 값 확인, maxUnavailable>0이면 기존 Pod 먼저 내려가고 신규 안 뜬 순간 생김
+3. WAS 기동시간(클래스로딩+커넥션풀 초기화)이 readiness initialDelaySeconds보다 긴지 확인
+4. nginx/Ingress upstream keepalive가 죽은 Pod IP 캐싱하고 있는지 확인
+- 놓치기 쉬운 포인트: WAS 자체는 그레이스풀 로직 갖췄어도 K8s probe/서비스 설정 안 맞으면 무중단 배포 절대 안 됨, 미들웨어 혼자 못 고침","MIDDLEWARE+DEVOPS"
+"롤링 업데이트할 때마다 커넥션 풀 관련 에러(Connection reset)가 터지는데?","- 확인 순서:
+1. preStop hook 있는지, 없으면 SIGTERM 즉시 커넥션 다 끊기니까 추가
+2. WAS datasource가 SIGTERM 받고 진행중 트랜잭션 drain하는 시간 있는지(graceful shutdown 지원 여부)
+3. terminationGracePeriodSeconds가 drain 시간보다 짧은지 확인
+4. LB/Ingress가 endpoint 제거 반영되는 시간(propagation delay)까지 preStop에서 sleep 잡았는지
+- 놓치기 쉬운 포인트: WAS가 안 끊어주면 DB 쪽에 idle 커넥션으로 남아서 다음 배포때 풀 고갈로 이어질 수도 있음","MIDDLEWARE+DEVOPS"
+"liveness probe 때문에 Full GC 중에 Pod가 계속 재시작되는 것 같은데 맞아?","- 확인 순서:
+1. GC 로그의 Full GC 발생 시각과 Pod 재시작 시각(kubectl describe pod Last State) 겹치는지 대조
+2. livenessProbe timeoutSeconds/periodSeconds가 Full GC pause 시간보다 짧은지 확인
+3. Full GC 중엔 애플리케이션 스레드 다 멈추니까(STW) health 엔드포인트도 응답 못 해서 probe fail로 kubelet이 kill
+- 조치: probe timeout 늘리기 + GC 튜닝(G1GC, MaxGCPauseMillis)으로 STW 시간 줄이기 둘 다 필요
+- 놓치기 쉬운 포인트: probe 실패로 재시작되는 걸 GC 문제로만 보고 튜닝만 하면 재발함, probe 설정도 같이 고쳐야 함","MIDDLEWARE+DEVOPS"
+"HPA로 새 Pod 뜬 직후에 응답 느린 현상 왜 그래?","- 확인 순서:
+1. 신규 Pod readiness 통과 시점과 실제 커넥션풀/캐시 warm-up 끝나는 시점 차이 확인
+2. JIT 컴파일 안 된 cold start 상태에서 트래픽 바로 받으면 첫 요청들 느림
+3. datasource initialSize를 0으로 두면 첫 요청마다 커넥션 생성비용 발생
+- 조치: readinessProbe에 warm-up 체크 로직 추가하거나, initialSize를 maxActive 근처로 미리 잡기
+- 놓치기 쉬운 포인트: HPA는 CPU/메모리 메트릭만 보고 스케일 판단하는데 WAS 웜업 시간은 그 메트릭에 안 잡혀서 스케일아웃해도 바로 개선 안 됨","MIDDLEWARE+DEVOPS"
+"nginx에서 502/504 뜨는데 WAS 스레드풀 문제인지 어떻게 확인해?","- 확인 순서:
+1. nginx/Ingress 로그에서 502(연결 자체 실패)인지 504(타임아웃)인지 구분
+2. 504면 WAS 스레드덤프 떠서 스레드풀 전부 BLOCKED/RUNNABLE로 잠겨있는지 확인
+```
+jstack <pid> > thread.dump
+```
+3. Prometheus에서 Tomcat maxThreads 대비 busy thread 수 그래프 확인, 포화상태였는지
+4. nginx proxy_read_timeout/proxy_connect_timeout이 WAS 처리시간보다 짧게 잡혀있는지
+- 놓치기 쉬운 포인트: nginx timeout만 늘리면 증상만 가려지고 실제 스레드풀 고갈 원인(느린 쿼리, 외부 API)은 안 잡힘","MIDDLEWARE+DEVOPS"
+"Blue-Green 배포하는데 Green으로 넘어가니까 세션 다 끊기는데?","- 확인 순서:
+1. JEUS/Tomcat 세션 클러스터링(replication)이 Blue/Green 두 그룹 간에도 연결돼 있는지 확인, 보통 별도 네임스페이스/서비스라 안 붙어있음
+2. Ingress/Service 스위칭이 즉시 전체 트래픽 넘기는 방식인지, 점진적인지
+3. 세션 저장을 외부 세션 스토어(Redis 등)로 안 빼놨으면 Blue-Green 구조 자체에서 세션 유지 불가능
+- 조치: sticky session 방식 버리고 외부 session store로 전환하는 게 근본 해결
+- 놓치기 쉬운 포인트: 미들웨어팀은 클러스터링 설정만 보고, devops팀은 트래픽 스위칭만 보면 이 문제 서로 못 찾음","MIDDLEWARE+DEVOPS"
+"Jenkins 배포 파이프라인은 성공인데 실제 Tomcat 재시작이 안 된 채로 넘어가는 문제, 뭘 놓친거야?","- 확인 순서:
+1. 배포 스크립트가 catalina.sh stop && start를 백그라운드로 던지고 exit code 0만 보고 성공 처리하는지 확인
+2. 실제 프로세스 뜬 것 확인하는 로직(pid 체크, 헬스체크) 없는지 확인
+3. Jenkins 셸 스텝이 set -e 없이 중간 커맨드 실패해도 계속 진행하는 구조인지
+- 조치: 재시작 후 헬스체크 폴링 스텝 추가, 실패시 파이프라인 fail 처리
+```groovy
+sh 'catalina.sh stop || true'
+sh 'catalina.sh start'
+sh 'sleep 5 && curl -sf http://localhost:8080/health || exit 1'
+```
+- 놓치기 쉬운 포인트: nohup으로 띄운 프로세스는 부모 셸 종료돼도 살아있어서 파이프라인은 정상 종료로 보임, 그게 진짜 기동 성공은 아님","MIDDLEWARE+DEVOPS"
+"PVC 마운트한 WAS 로그 디렉토리에 로그가 안 쌓이는데 뭐부터 봐야 돼?","- 확인 순서:
+1. PVC 마운트 경로 권한(uid/gid)이 WAS 프로세스 실행 유저와 맞는지 확인(ls -l, securityContext runAsUser)
+2. StorageClass가 ReadWriteOnce인데 여러 Pod가 붙으려는 구조인지(멀티 Pod 로그 경합)
+3. JEUS/Tomcat logging.properties에서 로그 경로가 실제 마운트 경로랑 일치하는지
+4. kubectl exec로 들어가서 직접 파일 쓰기 테스트(touch)로 권한 문제 재현
+- 놓치기 쉬운 포인트: securityContext에 fsGroup 안 잡으면 PVC 마운트시 root 소유로 잡혀서 non-root WAS 프로세스가 쓰기 실패함","MIDDLEWARE+DEVOPS"
+"Pod가 갑자기 evict되면서 스레드덤프를 못 떴는데 다음엔 어떻게 확보해?","- 확인 순서:
+1. 사전에 preStop hook에 jstack 자동 실행해서 PVC/emptyDir에 저장하도록 구성
+```yaml
+lifecycle:
+  preStop:
+    exec:
+      command: [""/bin/sh"", ""-c"", ""jstack 1 > /logs/thread_$(date +%s).dump""]
+```
+2. terminationGracePeriodSeconds를 dump 뜨는 시간보다 넉넉하게
+3. eviction 원인 자체는 kubectl describe node에서 memory/disk pressure 확인해서 근본 원인 잡기
+- 놓치기 쉬운 포인트: eviction은 SIGTERM도 안 주고 즉시 죽이는 경우 있어서(disk pressure 등) preStop도 못 탈 수 있음, node 리소스 여유 확보가 먼저","MIDDLEWARE+DEVOPS"
+"Prometheus 알럿은 문제없다고 뜨는데 실제로 WAS 커넥션풀 고갈로 장애났어, 왜 못 잡았을까?","- 확인 순서:
+1. 알럿 룰이 실제 datasource active/max 비율 메트릭 기준인지, 단순 Pod up/down만 보는 건지 확인
+2. JMX exporter scrape_interval이 풀 고갈-복구 주기보다 길어서 스파이크를 놓쳤는지 확인
+3. 메트릭 이름/MBean 경로가 JEUS 버전 업그레이드 후 바뀌어서 exporter가 조용히 0 찍고 있었는지 확인
+- 조치: active_connections/max_connections 비율 기반 알럿 추가, scrape_interval 15s 이하로
+- 놓치기 쉬운 포인트: 대시보드에 그래프 떠 있어도 알럿 룰이 안 걸려있으면 사람이 안 보는 이상 못 잡음","MIDDLEWARE+DEVOPS"
+"Canary 배포한 신버전 WAS Pod에서만 커넥션 릭 나는 것 같은데 확인 순서는?","- 확인 순서:
+1. kubectl top pod로 canary Pod 메모리/커넥션 사용량이 stable 버전보다 계속 우상향하는지 비교
+2. Prometheus에서 canary/stable label 나눠서 datasource active connection 그래프 비교
+3. canary Pod에 exec로 들어가서 netstat -anp | grep :5432 | wc -l 로 실제 DB 커넥션 수 직접 확인
+4. 코드 diff에서 커넥션 close/finally 처리 빠진 부분 있는지 확인(신버전에서 추가된 로직 위주로)
+- 놓치기 쉬운 포인트: canary 트래픽 비율이 낮으면 증상 나타나는데 시간 걸려서, 알럿 임계값이 stable 기준으로만 잡혀있으면 놓침","MIDDLEWARE+DEVOPS"

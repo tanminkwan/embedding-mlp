@@ -1,0 +1,164 @@
+"질의","응답","카테고리"
+"PostgreSQL StatefulSet용 PVC 용량이 부족한데 온라인으로 늘릴 수 있어?","- StorageClass가 allowVolumeExpansion: true인지 먼저 확인
+- PVC 스펙에서 storage 값만 patch
+```
+kubectl patch pvc postgres-data-postgres-0 -p '{""spec"":{""resources"":{""requests"":{""storage"":""50Gi""}}}}'
+```
+- CSI 드라이버가 온라인 확장 지원하면 Pod 재시작 없이 파일시스템 리사이즈까지 자동 진행
+- 안되면 Pod 재시작해서 리사이즈 트리거
+- 확장 후 df -h로 실제 마운트 반영 확인, PG tablespace는 자동으로 안 늘어나니 별도 확인","DBA+DEVOPS"
+"MySQL StatefulSet 3replica 중 slave 하나만 replication lag이 계속 커지는데 뭐부터 봐?","확인 순서
+1. kubectl top pod로 해당 Pod CPU/메모리 throttle 여부 확인
+2. SHOW SLAVE STATUS\G에서 Seconds_Behind_Master, relay log 적용 속도 확인
+3. PVC storageclass IOPS 등급 - 디스크 I/O 바틀넥인지 확인
+4. 같은 노드/AZ인지, 노드간 네트워크 지연 확인
+5. slave_parallel_workers 설정값 확인
+- 놓치기 쉬운 포인트: resources.limits.cpu 걸려 있으면 CFS throttling으로 relay log apply가 밀림","DBA+DEVOPS"
+"Helm으로 PostgreSQL 커스텀 파라미터(postgresql.conf)를 어떻게 주입해?","- bitnami 차트 기준 primary.extendedConfiguration으로 override
+```
+primary:
+  extendedConfiguration: |
+    max_connections = 300
+    shared_buffers = 2GB
+```
+- helm upgrade 후 StatefulSet rolling restart로 반영됨, 재기동 필요한 파라미터는 즉시 적용 안 되니 주의","DBA+DEVOPS"
+"Jenkins 파이프라인에서 Flyway로 DB 마이그레이션 자동 적용하려면 어떻게 구성해?","- 앱 배포 stage 전에 DB Migrate stage 추가
+```
+stage('DB Migrate') {
+  steps {
+    sh 'flyway -url=jdbc:postgresql://db:5432/app -user=$DB_USER -password=$DB_PW migrate'
+  }
+}
+```
+- 계정 정보는 Jenkins credentials로 주입
+- 마이그레이션 실패시 이후 배포 stage 진행되지 않게 파이프라인 abort 처리","DBA+DEVOPS"
+"MySQL Pod가 자꾸 OOMKilled 뜨는데 innodb_buffer_pool_size 때문인가?","확인 순서
+1. kubectl describe pod에서 OOMKilled, exit code 137 확인
+2. container resources.limits.memory 값 확인
+3. innodb_buffer_pool_size + 커넥션당 오버헤드 합이 limit 초과하는지 계산
+4. performance_schema, temp table 메모리 사용량도 확인
+- buffer_pool_size는 limit의 60~70% 이하로 잡아야 함, OS/커넥션 오버헤드 무시하면 바로 OOM","DBA+DEVOPS"
+"GitLab CI에서 DB 스키마 변경사항을 스테이징에 자동배포하려면?","- .gitlab-ci.yml에 migrate stage 추가
+```
+migrate:
+  stage: deploy
+  image: flyway/flyway
+  script:
+    - flyway -url=$DB_URL migrate
+  only:
+    - staging
+```
+- rollback 스크립트도 같이 버전관리해야 함
+- 실패시 이후 앱 배포 stage 자동 중단되게 needs/dependencies 설정","DBA+DEVOPS"
+"Oracle RAC를 쿠버네티스에서 그대로 운영할 수 있어?","- RAC는 공유 스토리지(ASM)+클러스터웨어 의존성이 커서 표준 K8s 패턴이랑 안 맞음
+- 컨테이너화는 가능해도 실제 운영은 대부분 VM/베어메탈 유지
+- K8s에서는 RAC 대신 단일 인스턴스+Data Guard, StatefulSet 조합으로 구성하는 경우가 더 많음","DBA+DEVOPS"
+"PostgreSQL 슬로우쿼리가 갑자기 늘었는데 CSI PVC 스토리지 문제인지 어떻게 확인해?","확인 순서
+1. pg_stat_activity에서 wait_event가 IO 관련(DataFileRead 등)인지 확인
+2. EXPLAIN ANALYZE로 실제 IO 비용 확인
+3. PVC/StorageClass의 IOPS·throughput 등급 확인
+4. Prometheus node_disk_* 지표와 iostat 비교
+5. 같은 노드에 다른 워크로드가 붙어 노이지네이버 발생했는지 확인
+- 놓치기 쉬운 포인트: gp2/gp3 같은 클라우드 볼륨은 IOPS burst 소진되면 급격히 느려짐","DBA+DEVOPS"
+"Tibero도 컨테이너 이미지로 만들어서 K8s에 올릴 수 있어?","- 가능하지만 라이선스 정책상 벤더 제공 이미지/가이드 확인 필수
+- 라이선스가 코어/인스턴스 단위라 Pod replica 늘리는 구조와 안 맞을 수 있음
+- PVC에 데이터 파일 마운트하고 StatefulSet으로 운영하는 패턴은 Oracle과 유사","DBA+DEVOPS"
+"MySQL Pod가 CrashLoopBackOff인데 innodb_buffer_pool_size 관련 로그가 보여","확인 순서
+1. kubectl logs로 innodb 초기화 에러(mmap 실패 등) 확인
+2. 컨테이너 memory limit보다 buffer_pool_size가 큰지 계산
+3. requests/limits 값과 my.cnf 값 불일치 확인
+4. HugePages 설정했는데 노드에 hugepage 미할당된 경우도 원인
+- buffer_pool_size는 limit보다 항상 작게, 최소 20% 여유 둬야 함","DBA+DEVOPS"
+"Prometheus로 MySQL 모니터링하려면 exporter 어떻게 붙여?","- mysqld_exporter를 같은 Pod에 sidecar로 배포
+```
+- name: mysqld-exporter
+  image: prom/mysqld-exporter
+  env:
+    - name: DATA_SOURCE_NAME
+      valueFrom:
+        secretKeyRef: {name: mysql-secret, key: dsn}
+```
+- ServiceMonitor 등록해서 Prometheus가 스크랩하도록 설정
+- exporter 계정은 REPLICATION CLIENT, PROCESS 권한만 최소 부여","DBA+DEVOPS"
+"Grafana에서 슬로우쿼리 대시보드 만들려면 뭘 연동해야해?","- mysqld_exporter의 mysql_global_status_slow_queries 메트릭 활용
+- Prometheus를 datasource로 등록 후 rate(mysql_global_status_slow_queries[5m]) 패널 구성
+- 쿼리 텍스트까지 보려면 exporter만으론 부족, pg_stat_statements나 PMM 별도 연동 필요","DBA+DEVOPS"
+"ELK로 DB 에러 로그 수집하려면 어떻게 구성해?","- Filebeat를 DB Pod에 sidecar로 붙여서 error log 파일 tail
+```
+filebeat.inputs:
+- type: log
+  paths: [""/var/log/mysql/error.log""]
+```
+- Logstash에서 파싱 후 Elasticsearch로 전송
+- 로그 파일이 emptyDir이면 Pod 재시작시 사라지니 PVC나 별도 로그 볼륨에 마운트해야 함","DBA+DEVOPS"
+"K8s HPA로 DB Pod도 오토스케일링 시킬 수 있어?","- StatefulSet은 HPA로 replica 늘려도 각 인스턴스가 독립 데이터라 자동 샤딩/로드밸런싱 안 됨
+- read replica 구조면 개수는 늘릴 수 있어도 앱이 read/write 분리 라우팅을 직접 해줘야 함
+- DB 스케일링은 HPA 대상이 아니라 수직 확장이나 샤딩 전략으로 접근하는 게 정석","DBA+DEVOPS"
+"DB Pod가 livenessProbe 때문에 계속 재시작되는데 뭘 봐야해?","확인 순서
+1. kubectl describe pod로 probe 실패 사유(timeout/connection refused) 확인
+2. initialDelaySeconds가 DB 기동시간(리커버리 포함)보다 짧은지 확인
+3. probe가 TCP인지 실제 쿼리(pg_isready, mysqladmin ping)인지 확인
+4. 비정상 종료 후 재기동이라 checkpoint/recovery 오래 걸리는 상황인지 로그 확인
+- 놓치기 쉬운 포인트: readiness와 liveness probe 값을 다르게 잡아야 함, 둘 다 짧게 잡으면 recovery 중 강제 재시작 걸림","DBA+DEVOPS"
+"Helm에서 DB 비밀번호를 values.yaml에 평문으로 안 넣고 관리하려면?","- 외부 Secret을 먼저 만들고 existingSecret 옵션으로 참조
+```
+auth:
+  existingSecret: postgres-credentials
+  secretKeys:
+    adminPasswordKey: password
+```
+- 실제 값은 Sealed Secrets나 External Secrets Operator로 볼트/파라미터스토어 연동해서 관리","DBA+DEVOPS"
+"DB StatefulSet Pod가 Pending 상태에서 안 뜨는데 PV 마운트 문제인지 어떻게 확인해?","확인 순서
+1. kubectl describe pod에서 FailedScheduling/FailedMount 이벤트 확인
+2. PVC 상태가 Bound인지 Pending인지 확인
+3. StorageClass volumeBindingMode가 WaitForFirstConsumer면 노드 스케줄링과 연계되는지 확인
+4. 멀티 AZ 클러스터에서 해당 zone에 PV가 붙을 수 있는지 확인
+- 놓치기 쉬운 포인트: 이전 Pod가 볼륨을 아직 detach 못했으면 multi-attach error로 새 Pod가 오래 대기함","DBA+DEVOPS"
+"Jenkins로 매일 새벽 DB 백업 자동화하려면?","- cron 트리거로 pipeline 스케줄링
+```
+triggers { cron('0 3 * * *') }
+```
+- pg_dump/mysqldump 실행 후 결과를 오브젝트 스토리지(S3 등)로 업로드하는 stage 추가
+- 백업파일 정합성 체크(gzip -t 등)와 성공/실패 알림 stage도 반드시 포함","DBA+DEVOPS"
+"K8s 노드 장애로 DB StatefulSet Pod가 다른 노드로 재배치됐는데 데이터 정합성 어떻게 확인해?","확인 순서
+1. PVC가 원래 볼륨 그대로 재부착됐는지 attach/detach 로그 확인
+2. DB 기동 로그에서 crash recovery/redo 적용 여부 확인
+3. replication 구성이면 다른 replica와 체크섬/row count 비교
+4. 강제 종료였으면 WAL/redo log 손상 가능성 점검
+- 놓치기 쉬운 포인트: 로컬 스토리지 기반 PV는 노드/zone에 고정돼 재배치 자체가 실패할 수 있음, PVC affinity부터 다시 확인","DBA+DEVOPS"
+"Docker로 PostgreSQL 이미지 빌드할 때 초기화 스크립트 최적화하려면?","- docker-entrypoint-initdb.d에 넣은 sql/sh는 최초 기동시 1회만 실행됨
+- 확장 설치 등은 빌드 타임에, 런타임 설정은 환경변수로 분리해서 레이어 캐싱 활용
+- 대용량 초기 데이터는 이미지에 박지 말고 볼륨/백업 복원 방식으로 분리해야 이미지 사이즈·빌드 시간이 줄어듦","DBA+DEVOPS"
+"Replication lag이 갑자기 커졌는데 K8s CPU throttling이 원인일 수 있어?","확인 순서
+1. cAdvisor의 container_cpu_cfs_throttled_seconds_total 지표 확인
+2. resources.limits.cpu 값과 실제 사용량 비교
+3. SHOW SLAVE STATUS의 Seconds_Behind_Master 증가 시점과 throttle 시점 매핑
+4. 노드 자체 과부하(다른 Pod와 CPU 경쟁)인지 확인
+- limit을 너무 타이트하게 잡으면 CFS quota로 주기적 throttle 걸려 relay log apply가 밀림, requests=limits로 맞추거나 여유를 두는 게 나음","DBA+DEVOPS"
+"GitLab CI로 인덱스 추가 마이그레이션을 무중단으로 배포하려면 어떻게 짜?","- 온라인 인덱스 생성(PG는 CREATE INDEX CONCURRENTLY, MySQL은 pt-online-schema-change) 사용
+```
+migrate:
+  script:
+    - psql -c ""CREATE INDEX CONCURRENTLY idx_x ON tbl(col);""
+```
+- lock 타임아웃을 짧게 걸어 실패시 즉시 중단되게 구성
+- 마이그레이션 stage를 앱 배포 stage와 분리해서 성공 확인 후 롤아웃 진행","DBA+DEVOPS"
+"OpenShift에서 Oracle DB 컨테이너가 SCC 때문에 기동을 못하는데 뭘 봐야해?","확인 순서
+1. oc describe pod로 permission denied(/opt/oracle 등) 에러 확인
+2. 기본 restricted SCC는 임의 UID로 실행되는데 이미지가 특정 UID/GID를 요구하는지 확인
+3. SecurityContext의 fsGroup/runAsUser를 이미지 요구사항에 맞게 지정
+4. 필요시 anyuid 계열 SCC를 서비스어카운트에 부여
+- 놓치기 쉬운 포인트: anyuid 허용은 보안팀 협의가 필요한 정책 사항이라 임의로 풀면 안 됨","DBA+DEVOPS"
+"Helm으로 배포한 DB를 이전 버전으로 rollback했는데 스키마 마이그레이션이 안 맞아서 앱이 깨지는데?","- helm rollback은 리소스 스펙만 이전 상태로 되돌리고 DB 데이터/스키마는 그대로 유지됨
+- 마이그레이션 down/rollback 스크립트를 별도로 관리해서 앱 버전 rollback과 짝을 맞춰 실행해야 함
+- 놓치기 쉬운 포인트: Flyway는 기본적으로 downgrade 미지원이라 별도 undo 스크립트나 스냅샷 복원 전략을 사전에 준비해둬야 함","DBA+DEVOPS"
+"K8s에서 DB 아카이브 로그(WAL)를 별도 PVC로 분리해서 관리하려면?","- 데이터 디스크와 별도 PVC로 archive/WAL 디렉토리 마운트
+```
+volumeMounts:
+  - name: data
+    mountPath: /var/lib/postgresql/data
+  - name: wal-archive
+    mountPath: /var/lib/postgresql/wal_archive
+```
+- archive_command를 wal_archive 경로로 지정, 용량은 백업 주기 감안해 데이터보다 넉넉하게
+- 아카이브 볼륨이 꽉 차면 WAL을 못 지워서 DB가 멈추는 경우 있음, kubelet_volume_stats_available_bytes로 용량 알림 필수","DBA+DEVOPS"

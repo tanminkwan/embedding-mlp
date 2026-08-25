@@ -1,0 +1,244 @@
+"질의","응답","카테고리"
+"Tomcat 버전 확인하는 명령어 뭐야?","```bash
+$CATALINA_HOME/bin/version.sh
+```
+- 또는 catalina.out 첫 줄에 버전 정보 찍힘","MIDDLEWARE"
+"JEUS 8 프로세스 강제로 죽이는 방법은?","```bash
+jeusadmin <노드>:<포트> server-stop -force
+```
+- 그래도 안 죽으면 kill -9 <pid>","MIDDLEWARE"
+"nginx 버전이랑 컴파일된 모듈 확인하려면?","```bash
+nginx -V
+```
+- -v는 버전만, -V는 컴파일 옵션까지 다 나옴","MIDDLEWARE"
+"Apache 설정 파일 문법 검사 명령어는?","```bash
+apachectl configtest
+```
+- Syntax OK 나오면 정상","MIDDLEWARE"
+"WebtoB 전체 재시작 명령어 알려줘","```bash
+wsdown -f
+wsboot
+```
+- wsdown -f는 강제 종료, 그냥 wsdown은 graceful 종료","MIDDLEWARE"
+"jstat으로 GC 현황 실시간으로 보는 명령어는?","```bash
+jstat -gcutil <pid> 1000
+```
+- 1000은 1초 간격, Eden/Old 사용률(%)이랑 GC 횟수/시간 나옴","MIDDLEWARE"
+"jcmd로 스레드 덤프 뜨는 방법은?","```bash
+jcmd <pid> Thread.print > thread_dump.txt
+```
+- jstack 대신 jcmd 써도 동일한 덤프 나옴, JDK9+에서 권장","MIDDLEWARE"
+"Tomcat Connector 포트 바꾸려면 어디 수정해?","- $CATALINA_HOME/conf/server.xml의 `<Connector port=""8080"" .../>`
+- 바꾸고 나면 재시작 필요, 핫리로드 안 됨","MIDDLEWARE"
+"nginx 로그 포맷 커스텀하려면 어떻게 해?","```
+log_format custom '$remote_addr - $request_time - $status';
+access_log /var/log/nginx/access.log custom;
+```
+- 필드 추가할 때마다 nginx -t로 검증 필수","MIDDLEWARE"
+"JEUS 8에서 스레드풀 사이즈 설정 어디서 해?","- WebAdmin 콘솔 > 스레드풀 관리, 또는 JEUSMain.xml의 `<thread-pool>` 항목
+```xml
+<thread-pool>
+    <name>pool1</name>
+    <min>10</min>
+    <max>200</max>
+</thread-pool>
+```","MIDDLEWARE"
+"Apache VirtualHost가 뭐야?","- 하나의 Apache로 여러 도메인/포트 서비스 나눠서 운영하는 설정
+- ServerName, DocumentRoot 별도로 지정","MIDDLEWARE"
+"WebtoB에서 HTL 노드가 정확히 뭐하는거야?","- 클라이언트 요청 받아서 HTH로 부하분산 해주는 로드밸런서 노드
+- HTH는 실제 WAS로 라우팅하는 역할","MIDDLEWARE"
+"G1GC에서 MaxGCPauseMillis 옵션 어떻게 써?","```
+-XX:MaxGCPauseMillis=200
+```
+- 목표치일 뿐 강제 보장 아님, 너무 낮게 잡으면 GC가 더 자주 돎","MIDDLEWARE"
+"JVM 힙 사이즈 설정 옵션 알려줘","```
+-Xms2048m -Xmx4096m
+```
+- Xms/Xmx 다르게 주면 힙 늘어날 때 지연 생기니 운영에선 보통 동일하게 맞춤","MIDDLEWARE"
+"Tomcat에서 AJP 커넥터랑 HTTP 커넥터 차이가 뭐야?","- HTTP는 클라이언트가 직접 붙는 프로토콜, AJP는 Apache 등 웹서버 뒤에서 바이너리 프로토콜로 연동
+- Ghostcat 취약점 이후 AJP 기본 비활성화 권장","MIDDLEWARE"
+"nginx에서 gzip 압축 설정 어떻게 해?","```
+gzip on;
+gzip_types text/plain application/json;
+gzip_min_length 1024;
+```
+- 이미 압축된 파일(이미지 등)엔 굳이 적용 안 하는 게 좋음","MIDDLEWARE"
+"JEUS 8 웹어드민 콘솔 접속 포트 어디서 확인해?","- domain.xml의 `<web-admin-port>` 항목 확인
+- 기본값은 9736","MIDDLEWARE"
+"Apache mod_proxy가 하는 역할이 뭐야?","- 리버스 프록시 기능 제공하는 모듈
+- ProxyPass/ProxyPassReverse로 백엔드 WAS로 요청 전달","MIDDLEWARE"
+"커넥션풀 maxIdle이랑 maxActive 차이가 뭐야?","- maxActive는 동시에 사용 가능한 최대 커넥션 수
+- maxIdle은 안 쓰고 대기 상태로 유지할 최대 커넥션 수, 초과하면 반납된 커넥션 바로 닫힘","MIDDLEWARE"
+"WebtoB 설정 파일 관리하는 명령어는?","```bash
+wscfl -i http.m
+```
+- 설정 컴파일 후 반영해야 wsboot 시 적용됨","MIDDLEWARE"
+"jstack 결과에서 데드락 있는지 어떻게 확인해?","```bash
+jstack <pid> | grep -A 20 ""Found deadlock""
+```
+- 없으면 아무것도 안 나옴, 있으면 관련 스레드/락 정보 쭉 나옴","MIDDLEWARE"
+"Tomcat 로그 레벨 바꾸려면 어디 수정해?","- $CATALINA_HOME/conf/logging.properties
+- 예: org.apache.catalina.level = FINE","MIDDLEWARE"
+"nginx에서 keepalive 설정 어떻게 해?","```
+upstream backend {
+    server 10.0.0.1:8080;
+    keepalive 32;
+}
+```
+- proxy_http_version 1.1, Connection "" 헤더도 같이 설정해야 실제 keepalive 동작함","MIDDLEWARE"
+"JEUS 8 클러스터링 개념 간단히 설명해줘","- 여러 JEUS 서버를 하나의 클러스터로 묶어 세션/부하 공유하는 구조
+- 클러스터 내 서버끼리 세션 replication으로 장애 시에도 세션 유지","MIDDLEWARE"
+"ZGC나 Shenandoah 같은 최신 GC 특징이 뭐야?","- 둘 다 STW 시간을 수 ms 이하로 극단적으로 줄인 저지연 GC
+- 힙 클수록 효과 커짐, 다만 CPU 오버헤드는 늘어남","MIDDLEWARE"
+"Tomcat 기동할 때 포트 already in use 에러 나는데 원인은?","확인 순서
+1. lsof -i:<port> 또는 netstat -ano로 점유 프로세스 확인
+2. 이전 Tomcat 프로세스가 안 죽고 남아있는지 확인
+3. 다른 애플리케이션이 같은 포트 쓰는지 확인
+- 놓치기 쉬운 점: shutdown.sh 쳤는데도 종료 안 된 좀비 프로세스가 흔한 원인","MIDDLEWARE"
+"JEUS 8 클러스터 노드 간 세션 동기화 안 되는데 원인 후보는?","확인 순서
+1. 클러스터 멤버 간 통신 포트(멀티캐스트/유니캐스트) 방화벽 확인
+2. domain.xml의 클러스터 설정(cluster-service) 활성화 여부 확인
+3. 세션 객체 Serializable 구현 여부 확인
+4. 각 노드 시간 동기화 상태 확인
+- 놓치기 쉬운 점: 클러스터 멤버 수 짝수/홀수 여부에 따라 split-brain 나는 경우 있음","MIDDLEWARE"
+"nginx에서 SSL handshake 실패하는데 뭐부터 봐야돼?","확인 순서
+1. error.log에서 SSL 관련 에러 메시지 확인
+2. 인증서 만료 여부 확인
+```bash
+openssl x509 -in cert.pem -noout -dates
+```
+3. 인증서 체인(중간 인증서 포함) 누락 여부 확인
+4. ssl_protocols/ssl_ciphers 설정과 클라이언트 지원 버전 호환 확인","MIDDLEWARE"
+"Apache에서 500 Internal Server Error 뜨는데 원인 뭐부터 봐야돼?","확인 순서
+1. error_log에서 정확한 에러 스택 확인
+2. .htaccess 문법 오류 여부 확인
+3. mod_php나 CGI 스크립트 권한 문제 확인
+4. 백엔드로 연동된 WAS 에러가 그대로 전달된 건 아닌지 확인
+- 놓치기 쉬운 점: 500이지만 실제 원인은 뒤에 붙은 WAS 쪽 예외인 경우 많음","MIDDLEWARE"
+"WebtoB HTL에서 부하분산이 특정 서버로만 몰리는데 원인은?","확인 순서
+1. wsdm -status로 각 SVR 노드 가중치(weight) 확인
+2. 로드밸런싱 알고리즘 설정(RR, 가중치 기반 등) 확인
+3. sticky session 설정 때문에 특정 서버로 고정되는 건 아닌지 확인
+4. 특정 노드 응답 지연으로 다른 노드가 상대적으로 더 받는 건 아닌지 확인","MIDDLEWARE"
+"GC STW 시간이 갑자기 길어졌는데 뭐 확인해야돼?","확인 순서
+1. gc.log에서 Full GC 발생 시점과 힙 사용률 확인
+2. 대량 객체 할당(배치 작업 등) 겹치는 시점인지 확인
+3. Old Gen 단편화 심한지 확인(CMS 사용 시 흔함)
+4. 서버 자체 CPU/메모리 리소스 부족 여부 확인
+- 놓치기 쉬운 점: GC 튜닝 문제가 아니라 인프라 리소스 부족이 원인인 경우도 많음","MIDDLEWARE"
+"스레드덤프 보니까 RUNNABLE 상태 스레드가 CPU 100% 물고 있는데 어떻게 찾아?","확인 순서
+1. top -H -p <pid>로 CPU 많이 쓰는 스레드 tid 확인
+2. tid를 16진수로 변환해서 jstack 덤프의 nid와 매칭
+```bash
+printf '%x\n' <tid>
+```
+3. 해당 스레드의 스택트레이스에서 반복문/정규식/직렬화 코드 의심
+4. 힙 덤프로 GC 부하 동반 여부 같이 확인","MIDDLEWARE"
+"커넥션풀 초기화 자체가 실패하는데 원인 후보는?","확인 순서
+1. DB 접속 정보(host, port, user, password) 오타 여부 확인
+2. DB 서버 자체가 살아있는지 tnsping/telnet으로 확인
+3. 드라이버 jar 버전 호환성 확인
+4. DB 쪽 max_connections 제한에 걸린 건 아닌지 확인
+- 놓치기 쉬운 점: 방화벽 정책 변경으로 갑자기 막히는 경우 흔함","MIDDLEWARE"
+"무중단 배포할 때 트래픽 드레인이 안 되고 바로 끊기는데 확인 순서는?","확인 순서
+1. 배포 스크립트에 drain 대기 시간(sleep) 있는지 확인
+2. 로드밸런서에서 해당 인스턴스를 미리 OUT 시켰는지 확인
+3. graceful shutdown 옵션 켜져있는지(Tomcat이면 unregister-mbeans) 확인
+4. 헬스체크 실패 판정 주기가 drain 시간보다 긴지 확인","MIDDLEWARE"
+"Tomcat에서 unable to create new native thread 에러 나는데 원인은?","확인 순서
+1. ulimit -u (max user processes) 값 확인
+2. 현재 떠있는 스레드 수 확인
+```bash
+ps -o nlwp <pid>
+```
+3. 스레드풀 사이즈 설정이 과도하게 큰지 확인
+4. 스레드 릭으로 스레드가 계속 누적되는지 스레드덤프로 확인
+- 놓치기 쉬운 점: OS 레벨 프로세스/스레드 제한(nproc)에 걸리는 경우가 실제로 많음","MIDDLEWARE"
+"JEUS 8에서 메모리릭 의심되는데 어떻게 확인해?","확인 순서
+1. jstat -gcutil로 GC 이후에도 Old Gen 사용률 계속 증가하는지 확인
+2. heap dump 2~3회 시간차 두고 떠서 비교(객체 수 증가 추이)
+3. static 컬렉션, ThreadLocal 미해제 코드 의심
+4. 커넥션/세션 등 리소스 close 누락 여부 확인","MIDDLEWARE"
+"nginx에서 정적 파일이 404 나는데 원인 뭐부터 봐야돼?","확인 순서
+1. root/alias 경로 설정과 실제 파일 경로 일치 여부 확인
+2. 파일 시스템 권한(nginx 실행 유저) 확인
+3. try_files 설정에서 fallback 경로 확인
+4. SELinux 컨텍스트 문제(RHEL 계열) 확인
+- 놓치기 쉬운 점: alias 쓸 때 마지막 슬래시(/) 빠지면 경로가 이상하게 붙는 경우 흔함","MIDDLEWARE"
+"Apache에서 Keep-Alive 타임아웃으로 연결이 자주 끊기는데 뭘 봐야돼?","확인 순서
+1. KeepAliveTimeout 값 확인(기본 5초로 짧음)
+2. MaxKeepAliveRequests 값 확인
+3. 클라이언트(브라우저/API 클라이언트)의 커넥션 재사용 패턴 확인
+4. 프록시 뒤에 있으면 앞단 로드밸런서 타임아웃값과 비교","MIDDLEWARE"
+"WebtoB 기동 로그에 에러 찍히는데 원인 후보 뭐가 있어?","확인 순서
+1. $WEBTOBDIR/log 밑 부트로그에서 에러 메시지 확인
+2. 설정 파일(http.m) 문법 오류 여부 wscfl -i로 재확인
+3. 라이선스 파일 유효기간 확인
+4. 포트 충돌 여부 확인","MIDDLEWARE"
+"GC 튜닝 다 했는데도 응답시간 스파이크가 반복되는데 뭘 봐야돼?","확인 순서
+1. gc.log랑 애플리케이션 응답시간 로그 시간대 겹치는지 대조
+2. 스파이크가 GC 때문인지 아니면 DB/외부 API 지연 때문인지 구분
+3. jstat으로 스파이크 시점 Young/Old GC 빈도 확인
+4. 스파이크 시점에 배치/스케줄러 작업 겹치는지 확인
+- 놓치기 쉬운 점: GC 문제로 단정 짓기 전에 스레드덤프로 실제 블로킹 지점 먼저 확인해야 함","MIDDLEWARE"
+"스레드 수가 시간 지날수록 계속 늘어나는데 스레드 릭 어떻게 확인해?","확인 순서
+1. jstack으로 시간차 두고 덤프 떠서 스레드 개수 비교
+2. 이름 패턴이 동일한(pool-1-thread-N 등) 스레드가 계속 쌓이는지 확인
+3. ExecutorService를 매번 새로 생성하고 shutdown 안 하는 코드 의심
+4. 스레드 상태가 대부분 WAITING/TIMED_WAITING인지 확인","MIDDLEWARE"
+"커넥션풀 설정한 개수보다 실제 커넥션이 적게 뜨는데 원인은?","확인 순서
+1. 풀 설정이 lazy init(최초 요청 시 생성)인지 확인
+2. minIdle/initialSize 설정값 자체가 낮게 잡혀있는지 확인
+3. DB 쪽 max_connections 제한에 걸려서 일부만 생성된 건 아닌지 로그 확인
+4. 커넥션 생성 실패 로그(타임아웃, 인증 실패) 있는지 확인","MIDDLEWARE"
+"무중단 배포 후 특정 인스턴스만 계속 이전 버전으로 응답하는데 확인 순서는?","확인 순서
+1. 해당 인스턴스에 배포 스크립트가 실제로 실행됐는지 배포 로그 확인
+2. 배포는 됐는데 프로세스 재시작이 안 된 건 아닌지 프로세스 기동시간 확인
+```bash
+ps -eo pid,lstart,cmd | grep <프로세스>
+```
+3. 로드밸런서/CDN 캐시가 이전 응답을 캐싱하고 있는지 확인
+4. sticky session으로 특정 클라이언트가 계속 구버전 인스턴스로만 붙는지 확인","MIDDLEWARE"
+"Tomcat에서 WebSocket 연결이 자주 끊기는데 원인 후보는?","확인 순서
+1. 앞단 프록시(nginx/Apache)의 proxy_read_timeout 등 타임아웃 설정 확인
+2. Upgrade/Connection 헤더가 프록시에서 제대로 전달되는지 확인
+3. Tomcat Connector의 maxConnections/커넥터 타임아웃 확인
+4. 로드밸런서가 WebSocket(sticky) 지원하는지 확인
+- 놓치기 쉬운 점: nginx는 기본적으로 proxy_http_version 1.1과 Upgrade 헤더 설정 안 하면 WebSocket 자체가 안 됨","MIDDLEWARE"
+"JEUS 8에서 트랜잭션 타임아웃 났다는 에러 나오는데 확인 순서는?","확인 순서
+1. JEUSMain.xml의 `<transaction-timeout>` 기본값 확인
+2. 해당 트랜잭션 내 DB 쿼리/외부 호출 응답시간 확인
+3. 분산 트랜잭션(2PC)이면 참여 리소스 중 지연되는 곳 찾기
+4. 트랜잭션 범위가 과도하게 넓게 잡힌 코드인지 확인
+- 놓치기 쉬운 점: 트랜잭션 타임아웃값을 무작정 늘리면 락 대기시간도 같이 늘어나서 부작용 생김","MIDDLEWARE"
+"nginx에서 rate limiting 걸어놨는데 정상 요청도 429 뜨는 경우 원인은?","확인 순서
+1. limit_req_zone의 key(대부분 $binary_remote_addr) 확인 - NAT/프록시 뒤라 IP 겹치는 경우 있음
+2. burst/nodelay 옵션 설정값 확인
+3. rate 설정값(r/s)이 실제 트래픽 패턴보다 낮게 잡힌 건 아닌지 확인
+```
+limit_req zone=one burst=20 nodelay;
+```
+4. 여러 유저가 공유 IP(사내망, 프록시)로 들어오는 상황인지 확인","MIDDLEWARE"
+"Apache-Tomcat mod_jk 연동에서 세션이 자주 끊기는데 원인은?","확인 순서
+1. workers.properties의 worker 목록과 실제 Tomcat 인스턴스 일치 여부 확인
+2. jvmRoute 설정과 Tomcat engine의 jvmRoute 값 일치 여부 확인
+3. sticky_session 옵션(true) 켜져 있는지 확인
+4. mod_jk 로그에서 worker 상태(ERROR) 전환 이력 확인
+- 놓치기 쉬운 점: jvmRoute 값이 다르면 sticky session이 아예 동작 안 함","MIDDLEWARE"
+"WebtoB 로드밸런싱 알고리즘 바꾼 뒤로 부하가 불균형한데 확인 순서는?","확인 순서
+1. 변경한 알고리즘(RR, MINPROC 등) 설정 반영 위해 wscfl 재컴파일했는지 확인
+2. 각 SVR 노드의 weight 값 재확인
+3. wsdm -status로 실시간 노드별 처리 건수 비교
+4. 특정 노드 응답 지연이 원인인지, 설정 자체 문제인지 구분","MIDDLEWARE"
+"JVM Metaspace OOM 나는데 확인 순서는?","확인 순서
+1. -XX:MetaspaceSize/-XX:MaxMetaspaceSize 설정값 확인
+2. 클래스 로더 릭 의심(WAR 재배포 반복 시 흔함)
+3. heap dump에서 ClassLoader 인스턴스 개수 확인
+4. 동적 클래스 생성 라이브러리(CGLIB, Proxy 등) 과다 사용 여부 확인
+- 놓치기 쉬운 점: 무중단 배포로 재배포만 반복해도 old ClassLoader가 언로드 안 되고 쌓이는 경우 있음","MIDDLEWARE"
+"무중단 배포랑 DB 마이그레이션이 겹쳐서 에러 나는데 확인 순서는?","확인 순서
+1. 마이그레이션 스크립트가 배포 시점과 정확히 어떤 순서로 실행됐는지 타임라인 확인
+2. 신버전 코드가 구버전 스키마로 조회/insert 하다 에러난 건 아닌지 확인
+3. 블루그린/카나리 배포 중 신구 버전이 동시에 같은 DB 붙는 구간이 있는지 확인
+4. 마이그레이션을 하위호환(add-only) 방식으로 나눠서 배포했는지 확인
+- 놓치기 쉬운 점: 스키마 변경은 애플리케이션 배포보다 먼저, 하위호환 유지하며 단계적으로 가야 함","MIDDLEWARE"

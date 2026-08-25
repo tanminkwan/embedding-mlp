@@ -1,0 +1,96 @@
+"질의","응답","카테고리"
+"RAC 인터커넥트 네트워크가 정확히 뭘 위해 쓰이는거야?","노드 간 cache fusion 트래픽 전용망임. GCS/GES 메시지, 블록 전송이 여기로 다님.
+- private network로 분리, 이중화 스위치 구성 필수
+- 여기서 지연/패킷드랍 나면 gc buffer busy, gc cr request 대기 바로 튐
+- public network랑 절대 섞지 마","NETWORK+DBA"
+"RAC 노드 하나 성능 갑자기 떨어졌는데 interconnect network 문제인지 어떻게 확인해?","확인 순서
+1. v$cluster_interconnects 로 사용중인 인터페이스 확인
+2. netstat -s / ethtool -S <interconnect_nic> 로 에러·드랍 카운트 체크
+3. v$system_event 에서 gc cr request, gc buffer busy acquire 대기시간 확인
+4. 스위치 포트 duplex/speed, jumbo frame(MTU 9000) 설정 일치 여부 확인
+5. tcpdump -i <interconnect_nic> udp 로 패킷 손실/재전송 캡처
+- 놓치기 쉬운 포인트: interconnect 스위치가 public 스위치랑 물리적으로 같은 장비면 브로드캐스트 폭주로 간헐적 지연 생김","NETWORK+DBA"
+"신규 서버에서 DB로 접속이 안될 때 방화벽에서 제일 먼저 봐야 할 거?","- 정책에 src IP/port, dst IP/port(1521, 3306, 5432, 8629 등) 허용 여부부터 확인
+- telnet <db_ip> <port> 나 nc -zv <db_ip> <port> 로 포트 open 여부 먼저 테스트
+- 정책 있어도 안되면 NAT/라우팅 문제일 수 있음","NETWORK+DBA"
+"커넥션풀에서 DB 세션이 간헐적으로 뚝뚝 끊기는데 원인 후보랑 확인 순서?","원인 후보 - 방화벽 idle session timeout, LB idle timeout, DB sqlnet expire_time 불일치, TCP keepalive 미설정
+확인 순서
+1. 방화벽 정책의 idle timeout 값 확인 (보통 기본 3600s 이하인 경우 많음)
+2. DB listener 쪽 sqlnet.ora 의 SQLNET.EXPIRE_TIME 값과 비교
+3. OS sysctl net.ipv4.tcp_keepalive_time 확인
+4. 방화벽 세션 로그에서 해당 세션 삭제(session aged out) 로그 확인
+- 방화벽 timeout이 DB보다 짧으면 방화벽이 먼저 세션 끊음, keepalive로 갱신 필요","NETWORK+DBA"
+"replication lag 늘어났는데 이게 네트워크 대역폭 문제인지 DB 자체 문제인지 어떻게 나눠서 봐?","- PostgreSQL: pg_stat_replication 에서 write_lag, flush_lag, replay_lag 세개 다 확인
+  - write_lag만 크다 → 네트워크 전송 지연
+  - replay_lag만 유독 크다 → standby 자체 apply 리소스 문제
+- MySQL: SHOW REPLICA STATUS 의 Seconds_Behind_Source 크면서 iperf3 테스트 정상이면 SQL thread(적용) 쪽 문제
+- 확인 순서: 1) iperf3/ping 으로 RTT·대역폭 확인 2) 위 lag 항목 분리해서 비교 3) standby 서버 CPU/IO 확인","NETWORK+DBA"
+"DB 접속시 SSL handshake 실패나는데 인증서 문제인지 네트워크 문제인지 어떻게 구분해?","```
+openssl s_client -connect <db_host>:<port> -showcerts
+```
+- 여기서 TCP 연결 자체가 안 되면 방화벽/네트워크 문제
+- 연결은 되는데 verify error 뜨면 인증서 체인/만료 문제
+- handshake 중간에 끊기면 방화벽/IPS가 SSL 패킷 검사하다 끊는 경우도 있음, 그때는 tcpdump로 RST 확인","NETWORK+DBA"
+"Oracle SCAN 이름으로 접속이 안 될 때 체크리스트 알려줘","1. nslookup <scan_name> 으로 IP 3개 다 나오는지 확인
+2. srvctl status scan_listener 로 리스너 상태 확인
+3. 방화벽에 SCAN VIP 3개 대역 전부 허용됐는지 확인 (하나만 열어놓는 실수 많음)
+4. 클라이언트 tnsnames.ora의 SCAN 주소랑 실제 DNS 응답 일치하는지 확인","NETWORK+DBA"
+"tcpdump로 DB 슬로우쿼리가 네트워크 원인인지 잡을때 기본 커맨드는?","```
+tcpdump -i eth0 host <db_ip> and port 1521 -w db.pcap
+```
+- wireshark로 열어서 TCP Retransmission, Duplicate ACK 많으면 네트워크 구간 문제
+- DB 자체 문제면 SQL 요청-응답 간격은 정상인데 애초에 쿼리 응답이 늦게 옴","NETWORK+DBA"
+"L4 로드밸런서 뒤에 있는 MySQL read replica 헬스체크가 자꾸 unhealthy로 빠지는데 확인할 거?","- 헬스체크가 단순 TCP connect인지 select 1 같은 실제 쿼리인지 확인
+- replica가 부하로 응답 늦으면 헬스체크 timeout 값보다 응답이 느려서 빠짐 - Seconds_Behind_Source 같이 확인
+- LB 헬스체크 threshold(연속 실패 횟수)랑 interval 값 늘려서 flapping인지 테스트","NETWORK+DBA"
+"VPN 연결 후 DB는 붙는데 속도가 너무 느려, 원인 후보는?","원인 후보 - VPN 터널 MTU/fragmentation, 암호화 오버헤드, DB 쿼리 자체 문제
+확인 순서
+1. VPN 안 타는 로컬 구간에서 같은 쿼리 재현 - 느리면 DB 문제
+2. ping -s 1400 -M do <db_ip> 로 fragmentation 발생하는지 MTU 테스트
+3. VPN 터널 인터페이스 MTU 값 확인 (보통 1400대로 낮춰야 함)","NETWORK+DBA"
+"PostgreSQL streaming replication에서 SSL 인증서 갱신할때 주의할 점은?","- primary, standby 양쪽 인증서 갱신 타이밍 맞춰야 함, 한쪽만 갱신하면 그 사이 walsender/walreceiver 연결 끊김
+- sslmode=verify-full 쓰면 인증서 CN/SAN이 실제 접속 hostname과 일치해야
+- 갱신 후 재연결 확인: pg_stat_replication 에 standby 다시 잡히는지 체크","NETWORK+DBA"
+"Tibero DB 방화벽 정책 잡을때 기본적으로 열어야 하는 포트는?","- 리스너 기본 포트 8629
+- 클러스터(TAC) 구성이면 interconnect용 포트도 별도로 열어야 함, 방화벽에 노드간 전체 대역 걸어놓는 경우 많음","NETWORK+DBA"
+"방화벽 정책 변경한 다음부터 커넥션풀에서 간헐적 timeout 나는데 확인 순서?","1. 방화벽 정책 반영 시각이랑 timeout 발생 시각 겹치는지 로그 대조
+2. 방화벽 세션 idle timeout 값이 커넥션풀 max idle time보다 짧아졌는지 확인
+3. tcpdump 로 SYN 재전송 여부 확인
+4. DB alert log/에러로그에 connection reset by peer 있는지 확인
+- 방화벽팀이 정책 배포하면서 timeout 기본값으로 리셋되는 경우 흔함","NETWORK+DBA"
+"스위치 포트 duplex mismatch가 DB 서버에 미치는 영향이 뭐야?","- 대량 패킷 손실/재전송 발생해서 쿼리 응답이 느려짐
+- 락 경합처럼 보이지만 실제론 네트워크 지연인 경우 있음
+- ethtool <interface> 로 duplex/speed 확인, 스위치쪽 설정도 같이 맞춰야","NETWORK+DBA"
+"DB 서버 network latency 증가가 슬로우쿼리로 오인되는 경우 어떻게 구분해?","- Oracle: v$session_wait 에서 wait event가 SQL*Net message from client, SQL*Net more data 면 네트워크 대기임 (DB 잘못 아님)
+- PostgreSQL: pg_stat_activity 의 wait_event_type이 Client면 클라이언트/네트워크 쪽 대기
+- mtr <db_ip> 로 구간별 RTT 확인해서 어디서 지연 생기는지 확인","NETWORK+DBA"
+"방화벽 IPS가 DB 프로토콜 세션을 끊어버리는 증상이랑 확인 방법은?","- 특정 패킷 크기 넘어가면 연결이 끊기거나, 대량 결과셋 조회할 때만 끊기는 패턴
+- tcpdump에서 RST 패킷의 source가 DB서버가 아니라 방화벽/IPS 장비면 의심
+- IPS 정책에서 DB 포트 deep packet inspection 예외 처리 필요","NETWORK+DBA"
+"취약점 스캔 진행중에 DB 연결이 계속 끊기는데 원인이랑 대응은?","- 스캐너가 방화벽/IPS 세션 리셋을 유발하거나 DB max_connections를 소모해서 정상 세션까지 밀려남
+- 대응: 스캔 시간대 DB 세션 수 모니터링, 방화벽에서 스캐너 IP 예외 처리 또는 스캔 대상에서 운영 DB 제외 협의","NETWORK+DBA"
+"Data Guard 스탠바이 동기화 지연이 네트워크 문제인지 DB 문제인지 구분하려면?","- v$archive_dest_status 에서 transport lag vs apply lag 나눠서 봄
+- transport lag만 크면 네트워크 대역폭 문제 (redo 생성량이 링크 속도보다 큼)
+- apply lag만 크면 standby 서버 리소스/MRP 프로세스 문제
+- v$dataguard_stats 도 같이 확인","NETWORK+DBA"
+"RAC나 AG(Always On) 같은 이중화 DB를 로드밸런서에 올릴 때 주의할 점은?","- 헬스체크는 단순 포트체크 말고 실제 role 확인(select 1, 혹은 read/write 가능여부)해야 함
+- Oracle SCAN은 이미 자체 로드밸런싱 기능 있어서 LB 뒤에 또 두는거 권장 안함
+- 트랜잭션 중간에 다른 노드로 튀면 안되는 세션이면 sticky 설정 필요","NETWORK+DBA"
+"MySQL Galera 클러스터에서 network partition 나면 어떤 증상이 보여?","- 특정 노드가 wsrep_cluster_status가 non-Primary로 빠짐
+- 로그에 gmcast 관련 연결 실패 메시지 남음
+- 확인: 방화벽/스위치에서 노드간 통신 포트(4567/4568) 막혔는지, 멀티캐스트 사용시 관련 정책 확인","NETWORK+DBA"
+"특정 서브넷에서만 DB 접속이 안 되는 경우 확인 순서는?","1. 방화벽에 해당 서브넷 대상 허용 정책 있는지 확인
+2. DB 자체 접근제어 확인 - Oracle sqlnet.ora의 tcp.invited_nodes, PostgreSQL pg_hba.conf, MySQL user의 host 설정
+3. 라우팅 테이블/NAT 설정에 해당 서브넷 빠져있는지 확인","NETWORK+DBA"
+"pg_hba.conf에서 막혔을 때랑 방화벽에서 막혔을 때 증상 차이가 뭐야?","- pg_hba.conf가 막으면 TCP 연결은 되고 DB 로그에 no pg_hba.conf entry for host 에러 남음
+- 방화벽이 막으면 TCP 연결 자체가 안 돼서 클라이언트에서 timeout만 뜨고 DB 로그엔 아무것도 안 남음
+- 에러 로그 유무로 바로 구분 가능","NETWORK+DBA"
+"DB서버 NIC bonding 구성에서 failover 될때 커넥션이 끊기는 이유는?","- bonding mode(active-backup/LACP) failover 시 ARP 갱신 지연, 스위치 STP 재계산 시간 발생
+- 이 시간이 TCP 재전송 타임아웃보다 길면 클라이언트 세션 자체가 끊김
+- 확인: bonding mode 설정, 스위치 포트채널/LACP 설정 일치 여부","NETWORK+DBA"
+"방화벽에서 outbound까지 막혀서 archive log 전송(FAL/standby)이 실패하는 경우 확인할 거?","- Data Guard log_archive_dest_n 설정에 지정된 standby 포트로 outbound 허용됐는지 확인
+- 방화벽이 inbound만 허용하고 outbound는 기본 차단인 경우 흔함
+- tnsping <standby_alias> 로 스탠바이 리스너까지 접속되는지 테스트","NETWORK+DBA"
+"L7 로드밸런서에서 SSL 종료(termination) 하고 뒤에 DB proxy(ProxySQL 등)로 넘길때 인증서 체인 에러 나는 이유는?","- LB에서 SSL 다 풀고 backend는 평문으로 보내는데, DB proxy가 SSL 강제하면 handshake부터 실패
+- LB가 re-encrypt(백엔드도 SSL) 모드인지 확인
+- re-encrypt면 LB가 신뢰하는 CA 체인에 DB proxy 인증서 CA가 포함됐는지 확인","NETWORK+DBA"

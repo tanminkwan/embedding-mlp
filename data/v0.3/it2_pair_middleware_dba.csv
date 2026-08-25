@@ -1,0 +1,171 @@
+"질의","응답","카테고리"
+"WAS 커넥션풀이 계속 고갈되는데 DB 쪽에서 뭘 먼저 확인해야 돼?","확인 순서:
+1. WAS 커넥션풀 active/idle/wait 지표 확인 (풀 사이즈 대비 active 얼마나 차있는지)
+2. DB에서 장시간 실행 중인 쿼리 확인
+```sql
+SELECT sid, serial#, username, status, last_call_et, sql_id
+FROM v$session
+WHERE status='ACTIVE' AND username IS NOT NULL
+ORDER BY last_call_et DESC;
+```
+3. 락 대기 세션 있는지 확인 (v$lock, v$session_wait)
+4. WAS 스레드덤프에서 커넥션 얻기 대기 중인 스레드 수 확인
+- 포인트: 커넥션풀 고갈은 대부분 WAS 문제가 아니라 DB 슬로우쿼리/락이 원인. 풀 사이즈 늘리기 전에 DB부터 봐야 함.","MIDDLEWARE+DBA"
+"JEUS 스레드덤프 찍었는데 대부분 BLOCKED 상태야. 뭘 의심해야 돼?","확인 순서:
+1. 스레드덤프에서 BLOCKED 스레드가 잡고 있는 lock 객체 확인 (커넥션풀 내부 lock인지 애플리케이션 lock인지)
+2. 커넥션풀 관련이면 DB 락 경합 확인
+```sql
+SELECT * FROM v$lock WHERE block > 0;
+```
+3. blocking session 잡아서 어떤 트랜잭션이 오래 걸고 있는지 확인
+4. WAS 트랜잭션 타임아웃 설정값과 실제 대기시간 비교
+- 포인트: 애플리케이션 코드 문제가 아니면 JEUS 스레드 BLOCKED는 십중팔구 DB 락 때문.","MIDDLEWARE+DBA"
+"야간 배치가 돌 때마다 WAS 타임아웃 에러랑 DB 락 경고가 같이 뜨는데 원인이 뭘까?","원인 후보:
+1. 배치 트랜잭션이 커밋 없이 대량 UPDATE/DELETE 돌리면서 락을 오래 잡음
+2. 배치가 잡은 락 때문에 온라인 트랜잭션이 대기하다 WAS 스레드가 타임아웃
+3. WAS 트랜잭션 타임아웃 값이 배치 처리시간보다 짧게 설정됨
+확인 순서:
+1. DB에서 배치 세션 락 보유 시간 확인
+2. WAS 타임아웃 설정 확인 (JEUS: TimeoutSecond, Tomcat: transaction timeout)
+3. 배치 커밋 단위(commit size) 확인, 너무 크면 커밋 간격 조정
+- 포인트: 배치는 온라인 트랜잭션과 커넥션풀/락을 분리하는 게 기본. 같은 풀 쓰면 이 문제 반복됨.","MIDDLEWARE+DBA"
+"Tomcat DataSource maxActive랑 Oracle PROCESSES 파라미터는 어떻게 맞춰야 돼?","- maxActive × WAS 인스턴스 개수 <= DB PROCESSES 여유치로 맞춰야 함
+- PROCESSES는 리스너, 백그라운드 프로세스 몫도 있어서 전체를 커넥션풀에 다 몰아주면 안 됨
+- 여러 WAS가 같은 DB 붙는 구조면 합산 기준으로 계산해야 함","MIDDLEWARE+DBA"
+"커넥션풀 누수(leak) 의심되는데 WAS랑 DB 어디서 확인해?","확인 순서:
+1. WAS 커넥션풀 모니터링에서 active 커넥션 수가 시간 지나도 안 줄어드는지 확인
+2. removeAbandoned/logAbandoned 옵션 켜서 반환 안 된 커넥션 스택트레이스 확보
+```xml
+<Resource removeAbandoned="true" logAbandoned="true" removeAbandonedTimeout="60" />
+```
+3. DB에서 동일 세션이 오래 INACTIVE 상태로 남아있는지 확인
+```sql
+SELECT sid, username, status, last_call_et FROM v$session WHERE status='INACTIVE';
+```
+4. 애플리케이션 코드에서 try-with-resources / finally close 누락 여부 확인
+- 포인트: DB엔 커넥션이 살아있는데 WAS 풀 카운트만 줄어드는 경우도 있어서 양쪽 다 봐야 함.","MIDDLEWARE+DBA"
+"nginx에서 502 뜨는데 백엔드 WAS 로그엔 DB 응답 지연밖에 안 보여. 원인 어디부터 봐?","확인 순서:
+1. nginx proxy_read_timeout 값 확인, WAS 처리시간보다 짧으면 502
+2. WAS 스레드덤프에서 JDBC 응답 대기 중인 스레드 비율 확인
+3. DB에서 해당 시간대 슬로우쿼리 확인
+```sql
+SELECT sql_id, elapsed_time/1000000 sec FROM v$sql ORDER BY elapsed_time DESC FETCH FIRST 10 ROWS ONLY;
+```
+4. WAS 커넥션풀 wait 큐 쌓였는지 확인
+- 포인트: 502는 웹서버 타임아웃이지만 근본 원인은 대부분 뒷단 DB. nginx 로그만 보고 웹서버 탓하면 삽질함.","MIDDLEWARE+DBA"
+"JDBC 커넥션풀 validation query는 왜 필요해?","- DB 재기동이나 네트워크 단절로 풀에 죽은 커넥션이 남는 걸 걸러내는 헬스체크
+```sql
+SELECT 1 FROM DUAL
+```
+- testOnBorrow=true면 꺼낼 때마다 검사, 부담되면 testWhileIdle로 백그라운드 검사만
+- 포인트: validation query 없으면 DB 재기동 후 WAS에서 Closed Connection 에러 쏟아짐.","MIDDLEWARE+DBA"
+"스레드덤프에서 스레드가 JDBC 대기 중인지 어떻게 구분해?","- 스택트레이스에 oracle.jdbc.driver, java.net.SocketInputStream.read, com.zaxxer.hikari 같은 패턴 있으면 DB 응답 대기
+- 애플리케이션 로직 대기면 자기 코드 패키지가 스택 상단에 잡힘
+- 포인트: 여러 스레드가 동일 SQL 대기 스택 찍혀 있으면 그 쿼리가 원인일 확률 높음.","MIDDLEWARE+DBA"
+"야간 배치 시간대에 WAS OutOfMemory 나면서 동시에 DB 아카이브로그가 급증했어. 연관 있을까?","원인 후보:
+1. 배치가 대량 데이터를 메모리에 올려 처리(bulk fetch)하면서 WAS 힙 부족
+2. 대량 INSERT/UPDATE로 redo 생성량 급증하면서 아카이브로그도 같이 증가
+3. 커밋 주기가 길어서 WAS 쪽 결과셋 홀딩 시간도 같이 길어짐
+확인 순서:
+1. WAS 힙덤프에서 ResultSet 캐싱 여부 등 메모리 점유 객체 확인
+2. 배치 쿼리 fetch size 확인, 크면 조정
+3. DB redo size 통계로 급증 시점과 배치 실행시간 매칭
+- 포인트: 두 현상이 같은 배치 잡 때문이면 서로 원인/결과가 아니라 공통 원인이 있는 것.","MIDDLEWARE+DBA"
+"WAS 인스턴스를 스케일아웃했더니 Oracle 세션 수가 갑자기 늘었어. 왜 그래?","- WAS 인스턴스마다 자체 커넥션풀을 만들기 때문에 인스턴스 수만큼 DB 세션이 곱으로 늘어남
+- 스케일아웃 전에 인스턴스수 × maxActive 합이 DB PROCESSES 한도 넘는지 미리 계산해야 함
+- 안 그러면 ORA-00020(maximum number of processes exceeded) 뜸","MIDDLEWARE+DBA"
+"Tomcat JDBC pool의 idle timeout보다 DB의 유휴세션 kill 정책이 더 짧으면 무슨 문제 생겨?","- DB가 먼저 세션을 끊는데 WAS 풀은 그 커넥션이 살아있다고 믿고 재사용 시도
+- 결과: Closed Connection, Connection reset 에러가 간헐적으로 발생
+- 해결: WAS pool idle timeout을 DB kill 정책보다 짧게 잡거나 testOnBorrow validation 켜기
+- 포인트: 이런 미스매치는 부하 적은 새벽 시간대에 더 잘 터짐 (커넥션이 오래 idle 상태로 남아서)","MIDDLEWARE+DBA"
+"WAS 재기동하면 DB 커넥션이 자동으로 정리돼?","- 정상 종료(graceful shutdown)면 풀이 커넥션 close 하면서 DB 세션도 정리됨
+- 강제 kill(kill -9)이면 WAS 쪽은 사라져도 DB엔 세션이 좀비로 남을 수 있음
+```sql
+SELECT sid, serial#, status, last_call_et FROM v$session WHERE status='INACTIVE';
+```
+- 좀비 세션은 SMON이 정리하거나 수동 kill 필요할 수 있음","MIDDLEWARE+DBA"
+"DB 슬로우쿼리 하나 때문에 WAS 스레드가 다 고갈되고 서비스 전체가 마비됐어. 재발 방지하려면 뭘 해야 돼?","원인: 커넥션풀 스레드가 슬로우쿼리 응답 기다리며 전부 점유, 신규 요청이 커넥션 못 받고 대기하면서 전체 스레드 고갈
+재발 방지:
+1. 쿼리 타임아웃을 WAS/드라이버 레벨에서 강제 설정 (queryTimeout)
+2. 커넥션풀을 API 성격별로 분리 (배치용/조회용/핵심결제용 등)
+3. DB 쪽 슬로우쿼리 인덱스/실행계획 튜닝
+4. Circuit breaker나 커넥션 대기 타임아웃으로 장애 전파 차단
+- 포인트: 커넥션풀 하나를 전체 서비스가 공유하는 구조가 근본 문제. 격리 안 하면 같은 사고 반복됨.","MIDDLEWARE+DBA"
+"DB를 Tibero로 이중화 전환할 때 WAS DataSource 설정은 어떻게 바꿔야 돼?","- JDBC URL, 드라이버 클래스(oracle.jdbc.OracleDriver -> com.tmax.tibero.jdbc.TbDriver) 교체
+- 커넥션풀 validation query 문법이 DB별로 다를 수 있어서 재확인 필요
+- 전환 전 커넥션풀 완전히 비우고(drain) 전환 후 재기동해서 새 커넥션으로 열도록
+- 포인트: URL만 바꾸고 드라이버 jar 안 바꾸면 ClassNotFoundException 뜸","MIDDLEWARE+DBA"
+"락 경합 때문에 WAS 커넥션이 안 돌아온다는 게 무슨 말이야? 확인 어떻게 해?","커넥션은 살아있지만 그 커넥션으로 실행한 쿼리가 락 대기 중이라 응답이 안 옴, WAS 입장에서는 커넥션을 계속 붙잡고 있는 상태
+확인 순서:
+1. DB에서 blocking/waiting 세션 확인
+```sql
+SELECT blocking_session, sid, serial#, wait_class, seconds_in_wait
+FROM v$session WHERE blocking_session IS NOT NULL;
+```
+2. blocking session이 어느 WAS 인스턴스/스레드에서 온 건지 program/module 컬럼으로 추적
+3. WAS 스레드덤프에서 해당 스레드가 몇 분째 멈춰있는지 대조
+- 포인트: 커넥션풀 지표만 보면 다 정상으로 보이는데 실제론 멈춰있는 케이스라 락부터 봐야 함.","MIDDLEWARE+DBA"
+"배치가 대량 UPDATE 커밋 안 한 채로 WAS 타임아웃 나면 DB 트랜잭션은 자동으로 롤백돼?","아니. WAS 쪽 타임아웃은 애플리케이션 레벨 처리일 뿐, DB 커넥션이 실제로 끊기기 전까진 트랜잭션이 살아있음. 커넥션이 살아있는 채로 방치되면 락도 계속 잡혀있으니
+```sql
+SELECT xidusn, xidslot, start_time, used_ublk FROM v$transaction ORDER BY start_time;
+```
+로 확인하고 필요하면 세션 강제 kill해서 롤백시켜야 함.","MIDDLEWARE+DBA"
+"커넥션풀 사이즈를 얼마로 잡아야 되는지 기준이 있어?","- CPU 코어 수, DB max_connections/PROCESSES, WAS 인스턴스 개수 곱해서 DB 한계 안 넘는지가 1차 기준
+- 무조건 크게 잡으면 DB 세션 자원 낭비 + context switching 오버헤드 커짐
+- 실무에서는 (동시 처리 요청 수 / 평균 쿼리 처리시간) 기반으로 산정 후 부하테스트로 보정","MIDDLEWARE+DBA"
+"지금 당장 커넥션풀 고갈로 서비스 장애 중이야. 뭐부터 해야 돼?","조치 순서:
+1. DB에서 장시간 실행 중인 쿼리/락 잡고 있는 세션 즉시 확인
+```sql
+SELECT sid, serial#, sql_id, last_call_et FROM v$session WHERE status='ACTIVE' ORDER BY last_call_et DESC;
+```
+2. 원인 세션이 배치/장애성 쿼리면 kill로 락 해제
+```sql
+ALTER SYSTEM KILL SESSION 'sid,serial#' IMMEDIATE;
+```
+3. WAS 커넥션풀 wait 큐 정리 위해 필요시 WAS 재기동 (마지막 수단)
+4. 원인 파악 전까지 커넥션풀 사이즈 임시 증설은 응급처치일 뿐, 근본 조치 아님
+- 포인트: kill 세션은 되돌릴 수 없으니 배치 진행상황 확인하고 실행해야 함.","MIDDLEWARE+DBA"
+"Oracle RAC 노드 하나가 failover 되면 WAS 커넥션풀은 어떻게 반응해?","기존에 그 노드로 연결된 커넥션은 전부 끊김, WAS 쪽에서 IOException, Connection reset 에러 발생
+확인/조치:
+1. WAS ojdbc 드라이버 FCF(Fast Connection Failover)/ONS 설정 여부 확인
+2. validation query로 죽은 커넥션 걸러내기
+3. failover 직후 한동안 에러율 스파이크는 정상, 지속되면 풀 재생성 필요
+- 포인트: RAC는 이중화니까 자동으로 다 처리해줄 거라 생각하면 안 됨. WAS 쪽 failover 대응 설정 따로 필요.","MIDDLEWARE+DBA"
+"PostgreSQL 앞에 pgbouncer 두고 WAS도 자체 커넥션풀 쓰는데 이렇게 이중으로 풀링하면 문제 없어?","- transaction pooling 모드에서는 WAS 세션 상태(prepared statement, temp table 등)가 커넥션마다 유지 안 돼서 오류 날 수 있음
+- WAS 풀 사이즈를 pgbouncer 뒷단 실제 커넥션 수보다 크게 잡아도 의미 없음, pgbouncer가 실제 병목
+- 포인트: 이중 풀링 자체는 흔한 구조지만 pgbouncer pool_mode랑 WAS 드라이버 기능(prepared statement 캐싱 등) 호환성 꼭 확인해야 함","MIDDLEWARE+DBA"
+"WAS 스레드덤프에 waiting for connection 스레드가 많은데 DB active session은 별로 안 늘어나 있어. 뭐가 문제야?","확인 순서:
+1. WAS 풀 maxActive 값과 현재 active 커넥션 수가 이미 꽉 찼는지 확인
+2. DB active session이 적으면 DB는 여유 있다는 뜻, 풀 사이즈 부족이 원인
+3. DB에 여유 있는데도 풀을 안 늘린 이유(예: DB PROCESSES 한계) 있는지 같이 확인
+- 포인트: DB는 안 바쁜데 WAS만 느리다는 신호가 나오면 풀 사이즈/설정 문제로 좁혀지는 케이스.","MIDDLEWARE+DBA"
+"대량 배치 INSERT 돌릴 때 WAS 힙이랑 DB undo가 같이 튀는데 어느 쪽부터 줄여야 돼?","원인: 배치가 커밋 없이 대량 insert 하면서 undo가 계속 쌓이고, WAS도 fetch/버퍼링 하면서 힙 사용량 증가
+확인 순서:
+1. 배치 commit 주기 확인 (몇 건마다 커밋하는지)
+2. undo tablespace 사용률 추이 확인
+```sql
+SELECT tablespace_name, sum(bytes)/1024/1024 mb FROM dba_undo_extents GROUP BY tablespace_name;
+```
+3. WAS 쪽 JDBC batch size / fetch size 설정 확인
+조치: commit 주기를 줄이고(예: 1000건 단위) WAS 배치 사이즈도 맞춰서 조정
+- 포인트: 커밋 주기 하나 바꾸는 걸로 WAS 힙, DB undo 두 문제가 동시에 완화되는 경우가 많음.","MIDDLEWARE+DBA"
+"DB 파티션 교체 작업(DDL) 하는 동안 WAS 쪽에서 타임아웃이 대량으로 뜨는데 왜 그래?","DDL이 해당 테이블/파티션에 배타적 락을 걸면서 온라인 트랜잭션의 DML이 전부 대기 상태에 빠짐
+확인 순서:
+1. DDL 세션이 잡고 있는 락 종류 확인 (TM lock 등)
+2. DDL 작업창을 서비스 저부하 시간대로 옮길 수 있는지 확인
+3. online DDL 옵션(예: partition exchange with ONLINE) 사용 가능한지 확인
+WAS 쪽은 임시로 해당 API만 타임아웃 늘리거나 요청 큐잉하는 식으로 완화
+- 포인트: DDL은 DML lock과 호환 안 되는 경우가 많아서 운영 중 파티션 작업은 락 영향범위 사전 검토가 필수.","MIDDLEWARE+DBA"
+"커넥션풀 모니터링 지표에서 active/idle/wait이 뭘 의미하는지 헷갈려.","- active: 현재 커넥션 잡고 쿼리 수행 중
+- idle: 풀에 반납돼서 대기 중, 바로 재사용 가능
+- wait: 풀이 꽉 차서 커넥션 못 받고 기다리는 요청 수
+- wait 값이 계속 0 이상이면 풀 부족 또는 반납 지연(=DB 응답 지연) 신호","MIDDLEWARE+DBA"
+"WAS-DB 간 네트워크 지연 때문에 커넥션풀이 고갈된 건지, DB 자체 슬로우쿼리 때문인지 어떻게 구분해?","확인 순서:
+1. DB 서버에서 직접 같은 쿼리 실행시간 측정 (네트워크 지연 제외한 순수 처리시간)
+```sql
+SET TIMING ON;
+```
+2. WAS-DB 간 ping/traceroute로 네트워크 latency 확인
+3. DB 세션 대기 이벤트에서 SQL*Net message from client 비중 확인, 높으면 네트워크/클라이언트 쪽 대기
+4. 반대로 db file sequential read 등 I/O 대기가 높으면 DB 자체 처리 문제
+- 포인트: SQL*Net message from client 대기가 크면 DB는 잘못 없고 네트워크나 WAS 쪽 처리 지연이 원인일 확률 높음.","MIDDLEWARE+DBA"
