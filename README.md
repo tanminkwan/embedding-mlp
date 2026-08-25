@@ -182,6 +182,7 @@ curl -X POST http://localhost:8080/classify \
 | [P1_요구사항정의서_ITSubClassification.md](docs/P1_요구사항정의서_ITSubClassification.md) | **2차**(IT 세부 분류) Phase 1 데이터 준비 요구사항 정의서 — 기존 IT 데이터 재라벨링 + 신규 단일/복합 라벨 데이터 → `it_sub_*.jsonl` |
 | [P1_검토서_ITSubRelabeling.md](docs/P1_검토서_ITSubRelabeling.md) | 기존 IT role 데이터(200건) 재라벨링 검토서 — 판단 기준, 파일별 보조 라벨 부여 근거(21건, 10.5%) |
 | [P1_설계서_ITSubClassification.md](docs/P1_설계서_ITSubClassification.md) | **2차** Phase 1 데이터 준비 설계 — `ITSubQueryRecord`/`ITSubDataRepository`(1차 타입 재사용 불가로 신규 정의), 반복 계층화 분할 알고리즘, `it2_*.csv`→`it_sub_data.jsonl` 변환 규칙 |
+| [P1_테스트결과서_ITSubClassification.md](docs/P1_테스트결과서_ITSubClassification.md) | **2차** Phase 1 테스트 결과 — 등급 A 100%/B 95~100% 커버리지(35 tests), 실데이터(850건) 실행 결과. 실데이터 검증 중 분할 비율 왜곡 버그를 발견·수정한 경위 포함 |
 
 1차 Phase별 문서가 폐기되어 물리적 충돌이 없으므로, 2차 신규 문서도 Phase 번호를 그대로
 재사용한다(예: `P1_요구사항정의서_ITSubClassification.md`) — 내용은 1차와 공통인 불변
@@ -220,5 +221,6 @@ Phase 0(공통 모듈)~Phase 5(추론)까지 코드가 구현·테스트된 상�
 | Docker: `Dockerfile.inference` | 완료 | Phase 5와 함께 완료(위 행 참고) |
 | Docker: `docker-compose.yml` | 완료(추론 단독) | 추론 서비스(Phase 5) 단독 기동용 — `network_mode: host`로 호스트의 Embedding Service(`localhost:8000`)/AIPro+(`localhost:28000`)에 접근, `models/model.pkl`을 읽기 전용으로 마운트. Phase 1~4 배치 파이프라인 통합 오케스트레이션은 여전히 후속 과제 |
 | Loki/Grafana 연동 | 미착수 | 향후 방침만 기록된 상태, 지금은 stdout 로그까지만 |
+| **2차 Phase 1** 요구사항정의+검토+설계+코드/테스트+실데이터 실행 | 완료 | `role_01~05_*.jsonl` 200건 재라벨링(21건 멀티라벨화) + 신규 CSV 15개(650건) → `it_sub_classification` 신규 패키지(`ITSubQueryRecord`/`ITSubDataRepository`/`combine`/`iterative_stratified_split`)로 `it_sub_data.jsonl`(850건) 생성 후 반복 계층화 3:1:1 분할. 35 tests(A등급 100%/B등급 95~100%). 실데이터 실행 중 분할 비율 왜곡 버그 발견·수정(단일 라벨 레코드가 특정 split에 쏠리던 문제) — 수정 후 실측 58.0/21.1/20.9%. 라벨별 240건 이상, 조합별 35~42건, 1차 산출물 무변경 확인 |
 
 이 표는 작업이 진행될 때마다 갱신한다.

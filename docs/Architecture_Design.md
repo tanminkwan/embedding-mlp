@@ -249,7 +249,7 @@ docker/
 ## 8. 디렉터리 구조 요약
 
 ```
-embedding-lr/
+embedding-mlp/
 ├── .env.example
 ├── docker-compose.yml
 ├── docker/

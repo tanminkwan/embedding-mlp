@@ -1,5 +1,5 @@
 # 추론(Phase 5) 상시 서비스 단독 구성 — Phase 1~4 배치 파이프라인은 포함하지 않는다.
-# [[P5_설계서_Inference]] 8절 "docker run" 수동 검증 절차를 compose로 옮긴 것.
+# Architecture_Design.md 6절 "docker run" 수동 검증 절차를 compose로 옮긴 것.
 # 실행: docker compose up --build
 services:
   inference:
@@ -12,10 +12,10 @@ services:
         http_proxy: ${http_proxy}
         https_proxy: ${https_proxy}
         no_proxy: ${no_proxy}
-    image: embedding-lr-inference:phase5
-    container_name: embedding-lr-inference
+    image: embedding-mlp-inference:phase5
+    container_name: embedding-mlp-inference
     # Embedding Service(localhost:8000)/AIPro+(localhost:28000)가 호스트에서 별도로
-    # 떠 있는 기존 서비스라 host 네트워크로 붙는다 — P5_테스트결과서_Inference.md 4.1절과 동일.
+    # 떠 있는 기존 서비스라 host 네트워크로 붙는다.
     network_mode: host
     env_file:
       - .env
