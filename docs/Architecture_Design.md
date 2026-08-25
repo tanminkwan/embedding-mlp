@@ -219,7 +219,7 @@ flowchart TD
 
 | 후보 | 용도 | 도입 시점 |
 |---|---|---|
-| 커스텀 데이터 검증 함수(pandera 등) | Phase 1.5 조합 직후 JSONL 스키마/라벨 값 검증 — [[P1_Data_Preprocessing_Review]]의 이스케이프 오류 같은 사고를 자동 감지 | Phase 1.5 구현 시 |
+| 커스텀 데이터 검증 함수(pandera 등) | Phase 1.5 조합 직후 JSONL 스키마/라벨 값 검증 — CSV 이스케이프 오류 같은 사고를 자동 감지 | Phase 1.5 구현 시 |
 | mlflow (로컬 파일 백엔드) | 하이퍼파라미터 탐색 결과 실험 추적 | 재학습 반복이 많아질 때만, 과설계 방지를 위해 초기엔 `hyperparams.json` 기록으로 충분 |
 
 ## 6. Docker 구성
