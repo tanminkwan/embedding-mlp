@@ -1,5 +1,4 @@
-"""Phase 5 CLI — 추론 서비스 기동 진입점(합성 루트). Architecture_Design.md 2절/6절,
-P5_설계서_Inference.md 7절.
+"""Phase 5 CLI — 추론 서비스 기동 진입점(합성 루트). Architecture_Design.md 참고.
 
 Trigger: python -m embedding_lr.cli.run_inference_server
 Input:   환경변수(.env) — MODEL_PATH(필수), INFERENCE_HOST/INFERENCE_PORT(선택),

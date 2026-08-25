@@ -1,4 +1,4 @@
-"""환경 설정 — P0_설계서_Common.md 2절. 환경마다 달라지는 값은 .env에서 읽는다."""
+"""환경 설정 — Architecture_Design.md 참고. 환경마다 달라지는 값은 .env에서 읽는다."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

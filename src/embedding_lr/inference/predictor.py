@@ -1,4 +1,4 @@
-"""Phase 5 예측 파이프라인 오케스트레이션 — P5_설계서_Inference.md 4절. 등급 B
+"""Phase 5 예측 파이프라인 오케스트레이션 — Architecture_Design.md 참고. 등급 B
 (오케스트레이션) — TextClassifier Protocol 하나에만 의존(DIP), fake로 통합 테스트.
 분류 방식(임베딩+LR/NLI/앙상블 등)이 무엇이든 이 모듈은 알지 못한다.
 
@@ -15,8 +15,7 @@ from embedding_lr.preprocessing.text_cleaner import clean_text
 
 def predict(classifier: TextClassifier, items: list[QueryRecord]) -> list[PredictionResult]:
     """items가 비어 있으면 classifier.classify() 호출 없이 빈 리스트 반환. item.response는
-    읽지 않는다(학습 데이터의 임베딩 대상이 질의 단독이므로 — P5_요구사항정의서_Inference.md
-    2절)."""
+    읽지 않는다(학습 데이터의 임베딩 대상이 질의 단독이므로 — Architecture_Design.md 참고)."""
     if not items:
         return []
 

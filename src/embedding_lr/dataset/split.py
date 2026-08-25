@@ -1,4 +1,4 @@
-"""QueryRecord 목록을 클래스별 3:1:1 stratified 분할 — P1_설계서_DataPreparation.md 5절.
+"""QueryRecord 목록을 클래스별 3:1:1 stratified 분할 — Architecture_Design.md 참고.
 등급 A(순수 로직) — 파일/포맷을 모르고 list[QueryRecord] 위에서만 동작한다."""
 
 import random

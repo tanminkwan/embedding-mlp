@@ -1,4 +1,4 @@
-"""Phase 5 FastAPI 앱 — P5_설계서_Inference.md 5절. 등급 B — TextClassifier Protocol
+"""Phase 5 FastAPI 앱 — Architecture_Design.md 참고. 등급 B — TextClassifier Protocol
 하나에만 의존, FastAPI TestClient + fake로 통합 테스트.
 
 Trigger: create_app(classifier) — cli/run_inference_server.py가 감싸 uvicorn으로 구동.

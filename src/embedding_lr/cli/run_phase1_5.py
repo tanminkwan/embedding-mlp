@@ -1,4 +1,4 @@
-"""Phase 1.5 CLI — role_*.jsonl 재조합 + 클래스별 3:1:1 분할. P1_설계서_DataPreparation.md 4/5절.
+"""Phase 1.5 CLI — role_*.jsonl 재조합 + 클래스별 3:1:1 분할. Architecture_Design.md 참고.
 
 Trigger: python -m embedding_lr.cli.run_phase1_5 --input-dir <path> --output-dir <path>
 Input:   --input-dir(role_01~09_*.jsonl 9개가 있는 디렉터리)

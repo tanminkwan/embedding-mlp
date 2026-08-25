@@ -1,7 +1,7 @@
-"""run_id·상태 파일 공통 처리 — P0_설계서_Common.md 6절.
+"""run_id·상태 파일 공통 처리 — Architecture_Design.md 참고.
 
 Architecture_Design.md 3절 "모니터링" 규약(status/<phase>_<run_id>.json)과
-P0_설계서_Logging.md의 run_id 필드를 한 곳에서 구현한다.
+Architecture_Design.md의 run_id 필드 설계를 한 곳에서 구현한다.
 """
 
 import json

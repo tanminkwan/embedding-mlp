@@ -1,5 +1,5 @@
 """domain.interfaces.VectorStore 구현체 — AIPro+(localhost:28000) HTTP 클라이언트.
-P0_설계서_Common.md 4절. 등급 B(오케스트레이션, HTTP I/O) — 구현 후 통합 테스트(respx 모킹)."""
+Architecture_Design.md 참고. 등급 B(오케스트레이션, HTTP I/O) — 구현 후 통합 테스트(respx 모킹)."""
 
 import httpx
 from pydantic import BaseModel

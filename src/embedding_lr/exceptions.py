@@ -1,4 +1,4 @@
-"""공통 예외 계층 — P0_설계서_Common.md 5절."""
+"""공통 예외 계층 — Architecture_Design.md 참고."""
 
 
 class EmbeddingLRError(Exception):

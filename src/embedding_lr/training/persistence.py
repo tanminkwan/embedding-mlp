@@ -1,4 +1,4 @@
-"""학습 산출물(모델/탐색 이력) 저장·로드 — P3_설계서_Training.md 5절. 등급 B.
+"""학습 산출물(모델/탐색 이력) 저장·로드 — Architecture_Design.md 참고. 등급 B.
 
 Trigger: save_model(...) / load_model(...) / save_search_result(...) — cli/run_phase3.py,
 Phase 5(inference/predictor.py, 미구현)가 감싼다.

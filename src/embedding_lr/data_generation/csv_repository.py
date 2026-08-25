@@ -1,4 +1,4 @@
-"""레거시 CSV 입력 어댑터 — P1_설계서_DataPreparation.md 3절.
+"""레거시 CSV 입력 어댑터 — Architecture_Design.md 참고.
 DataRepository Protocol의 입력 전용 구현체. 이미 확보된 원본 데이터가 지금은 CSV
 형태로 오지만, 형식이 바뀌어도 dataset.combine/split은 이 클래스만 교체하면 된다.
 등급 B(오케스트레이션, 파일 I/O 있음) — 구현 후 통합 테스트."""

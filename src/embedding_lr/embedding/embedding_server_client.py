@@ -1,7 +1,7 @@
 """domain.interfaces.EmbeddingClient 구현체 — 독립 Embedding Service HTTP 클라이언트.
 AIPro+(localhost:28000)와는 별개의 서비스(예: localhost:8000)이며, Phase 5 추론 전용이다
 — Phase 2는 AIPro+ 일괄 등록/조회(embedding/aipro_client.py)로 벡터를 얻는다.
-P0_설계서_Common.md 4절. 등급 B(오케스트레이션, HTTP I/O) — 구현 후 통합 테스트(respx 모킹)."""
+Architecture_Design.md 참고. 등급 B(오케스트레이션, HTTP I/O) — 구현 후 통합 테스트(respx 모킹)."""
 
 import httpx
 

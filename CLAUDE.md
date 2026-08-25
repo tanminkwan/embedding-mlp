@@ -75,8 +75,8 @@
 - **입출력 보존(rewrite 금지)**: 각 스텝의 output은 다음 스텝의 input이 되며, 동일 이름으로
   덮어쓰지 않는다. 재실행 시에는 버전/타임스탬프를 붙여 새로 저장하거나, 명시적으로 지정된
   경로에만 쓴다. (예: `role_01~09_*.jsonl`(원본) → `data.jsonl`(재조합) → `train/test/val.jsonl`
-  (재분할)처럼 상류 원본을 절대 하류 결과로 직접 덮어쓰지 않는다 — [[P1_Data_Preprocessing_Review]]
-  참고.)
+  (재분할)처럼 상류 원본을 절대 하류 결과로 직접 덮어쓰지 않는다 — 과거 CSV 이스케이프
+  오류로 인한 데이터 손실 사고 재발 방지 원칙과 동일.)
 
 ## 6. Docker 컨테이너 실행
 
@@ -116,7 +116,16 @@
   (예: `Embedding`, `Training`, `DataPreprocessing`).
 - 문서를 새 버전으로 다시 쓸 때는 기존 파일을 덮어쓰지 않고 `_v2`, `_v3`처럼 버전을
   붙인 새 파일로 추가한다(5절 "입출력 보존" 원칙과 동일한 취지) — 이전 버전은 보존.
-- 예: `P1_요구사항정의서_DataPreparation.md`, `P2_설계서_Embedding.md`,
-  `P3_테스트결과서_Training.md`, `설계서_Architecture.md`(현재 존재).
+- 예(패턴 설명용): `P1_요구사항정의서_DataPreparation.md`, `P2_설계서_Embedding.md`,
+  `P3_테스트결과서_Training.md`, `설계서_Architecture.md`.
 - `Scope_Definition.md`는 이 규칙 제정 이전에 작성된 프로젝트 최초 요구사항 문서로,
   이름을 바꾸지 않고 예외로 유지한다(다수 문서가 `[[Scope_Definition]]`으로 참조 중).
+- **유지보수 단계 예외(신규)**: 1차(Phase 0~5)가 완료된 뒤 기존 시스템을 수정·확장하는
+  유지보수 작업(예: 2차 IT 세부 분류 MLP 추가)에서는 **`P<phase>` 접두사를 붙이지 않는다** —
+  이미 종료된 로드맵의 Phase 번호를 재사용하면 어떤 프로젝트의 몇 번째 산출물인지
+  혼동되기 때문이다. 이 경우 `<DocType>_<Topic>.md`로만 작성하고, 내용은 **1차와 공통인
+  불변 부분을 재서술하지 않고 `Architecture_Design.md`를 참조**하며 **이번에 변경·추가되는
+  부분만** 다룬다(`Architecture_Design.md` 0절 참고). 1차 자체의 Phase별 요구사항정의서/
+  설계서/테스트결과서(`P0_*`~`P5_*`)는 유지보수 전환 시점에 폐기하고, `Architecture_Design.md`
+  하나로 통합 관리한다 — 완료 이력(테스트 건수·커버리지 등)은 `README.md` "진행 상황"
+  표에 보존한다.

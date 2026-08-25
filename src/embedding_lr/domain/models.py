@@ -1,4 +1,4 @@
-"""공유 데이터 모델 — P0_설계서_Common.md 3절. 등급 A(순수 로직) — 테스트 먼저."""
+"""공유 데이터 모델 — Architecture_Design.md 참고. 등급 A(순수 로직) — 테스트 먼저."""
 
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -142,7 +142,7 @@ class HyperparamSearchResult(BaseModel):
 
 class ValidationMetrics(BaseModel):
     """evaluation.metrics.compute_metrics() 반환값 — val set 기준 5-class + 이진 지표
-    (P4_설계서_Validation.md 3절)."""
+    (Architecture_Design.md 참고)."""
 
     accuracy: float
     f1_macro: float

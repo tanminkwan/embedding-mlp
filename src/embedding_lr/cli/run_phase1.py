@@ -1,4 +1,4 @@
-"""Phase 1 CLI — 레거시 CSV role 파일을 JSONL로 변환. P1_설계서_DataPreparation.md 2절.
+"""Phase 1 CLI — 레거시 CSV role 파일을 JSONL로 변환. Architecture_Design.md 참고.
 
 이미 확보된 원본 데이터(현재 CSV)를 학습 파이프라인이 쓰는 JSONL로 변환한다 —
 새 데이터를 만드는 단계가 아니다.

@@ -1,5 +1,5 @@
 """Phase 4 CLI — val_vectors.parquet + model.pkl + hyperparams.json → 검증 리포트.
-Architecture_Design.md 3절 Workflow 규약, P4_설계서_Validation.md 8절 데이터 흐름.
+Architecture_Design.md 참고(3절 Workflow 규약, 4절 데이터 흐름).
 
 Trigger: python -m embedding_lr.cli.run_phase4 \
            --val <path> --model <path> --search-result <path> \

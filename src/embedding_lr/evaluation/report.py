@@ -1,4 +1,4 @@
-"""Phase 4 검증 오케스트레이션 — P4_설계서_Validation.md 5절. 등급 B(오케스트레이션) —
+"""Phase 4 검증 오케스트레이션 — Architecture_Design.md 참고. 등급 B(오케스트레이션) —
 `Classifier` Protocol(domain/interfaces.py)에만 의존, sklearn을 직접 import하지 않는다.
 
 Trigger: build_report(...) → save_report(...) — cli/run_phase4.py가 감싼다.

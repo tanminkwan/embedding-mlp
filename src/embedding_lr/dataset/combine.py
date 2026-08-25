@@ -1,4 +1,4 @@
-"""role_*.jsonl에서 로드된 QueryRecord 9묶음 재조합 — P1_설계서_DataPreparation.md 4절.
+"""role_*.jsonl에서 로드된 QueryRecord 9묶음 재조합 — Architecture_Design.md 참고.
 등급 A(순수 로직) — 파일/포맷을 모르고 list[QueryRecord] 위에서만 동작한다."""
 
 from collections import Counter

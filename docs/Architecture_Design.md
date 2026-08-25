@@ -4,6 +4,25 @@
 추론)을 실제 코드 구조로 구체화한 설계서. [[CLAUDE.md]]의 SOLID, workflow 친화, Docker
 원칙을 반영한다.
 
+## 0. 문서 체계 안내 (유지보수 전환, 신규)
+
+1차(LR 5-class, Phase 0~5)는 완료되었고, 프로젝트는 2차(IT 세부 멀티라벨 MLP 확장,
+[[Scope_Definition]] 2.2절)를 진행하는 **유지보수 단계**로 전환되었다. 이에 따라 문서
+체계를 다음과 같이 정리한다.
+
+- 1차 Phase별 요구사항정의서/설계서/테스트결과서(`P0_*`~`P5_*`, 총 20건)는 **폐기**한다.
+  이 문서(`Architecture_Design.md`)를 프로젝트 전체(1차+2차)의 살아있는 단일 아키텍처
+  문서로 통합 관리하며, 이번 갱신(To-Be)에서 1차 절(1~8절)의 내용은 실제 구현과 다르지
+  않도록 최신화하고, 2차 확장분은 9절에 추가한다.
+- 1차 완료 당시의 실행 이력(테스트 건수·등급별 커버리지·실측 검증 지표 등)은
+  `README.md` "진행 현황" 표에 보존되어 있으므로 유실되지 않는다 — 상세 경위가 필요하면
+  git 커밋 이력(`P0_*`~`P5_*` 삭제 이전 커밋)을 참고한다.
+- **Phase 번호(P0~P5)는 1차 로드맵에 귀속된 값**이라 2차 이후 신규 산출물에는 재사용하지
+  않는다([[CLAUDE.md]] 7절에 이 예외를 명시). 2차의 요구사항정의서/설계서/테스트결과서는
+  Phase 접두사 없이 `<DocType>_<Topic>.md`(예: `요구사항정의서_ITSubClassification.md`)로
+  작성하고, **1차와 공통인 불변 부분은 재서술하지 않고 이 문서를 참조**하며 **변경·추가되는
+  부분만** 다룬다.
+
 ## 1. 아키텍처 개요
 
 배치 파이프라인(Phase 1~4)과 상시 구동 추론 서비스(Phase 5)를 분리한다. 각 Phase는
@@ -21,11 +40,11 @@
 ```
 
 Phase 1은 **새 데이터를 만드는 단계가 아니다** — 질의·응답 내용 자체는 이미 확보되어
-있고(현재는 CSV, [[P1_설계서_DataPreparation]] 1절), Phase 1의 코드는 그 원본을 학습
-파이프라인이 쓰는 JSONL로 변환하는 일만 한다. 각 화살표는 "파일 경로"이며, 다음 Phase의
-CLI는 이 경로를 `--input` 인자로 받는다. 상류 원본(`role_*.jsonl`)을 하류 결과가 절대
-덮어쓰지 않는다([[P1_Data_Preprocessing_Review]] 사고 재발 방지 — role → data →
-train/test/val 순서만 허용).
+있고(현재는 CSV), Phase 1의 코드는 그 원본을 학습 파이프라인이 쓰는 JSONL로 변환하는
+일만 한다. 각 화살표는 "파일 경로"이며, 다음 Phase의 CLI는 이 경로를 `--input` 인자로
+받는다. 상류 원본(`role_*.jsonl`)을 하류 결과가 절대 덮어쓰지 않는다(과거 `role_03_network.csv`의
+CSV 이스케이프 오류로 인한 레코드 손실 사고 재발 방지 — role → data → train/test/val
+순서만 허용).
 
 ## 2. 모듈 구조 (SOLID — SRP/DIP 중심)
 
@@ -37,10 +56,10 @@ src/embedding_lr/
 │   ├── models.py          # QueryRecord, KnowledgeRecord, KnowledgeItem, PredictionResult (dataclass/pydantic)
 │   └── interfaces.py      # Protocol: EmbeddingClient(독립 Embedding Service, Phase 5 전용), VectorStore(AIPro+, Phase 2 전용), Classifier, DataRepository
 ├── preprocessing/
-│   └── text_cleaner.py    # 코드펜스 구분자 제거 + 스택 트레이스 라인 제거 + 공백 정규화 (P2_설계서_TextCleaning 참고) — Phase2와 추론에서 공유
+│   └── text_cleaner.py    # 코드펜스 구분자 제거 + 스택 트레이스 라인 제거 + 공백 정규화(순서 고정) — Phase2와 추론에서 공유
 ├── data_generation/       # Phase 1 — 이미 확보된 원본(현재 CSV)을 JSONL로 변환
 │   ├── csv_repository.py    # `DataRepository` 구현체 — 레거시 CSV 읽기 전용(save는 미지원, CSV로는 내보내지 않음)
-│   └── jsonl_repository.py  # `DataRepository` 구현체(JSONL) — 지금은 이 형식뿐이지만 형식이 바뀌면 이 구현체만 교체(P1_설계서_DataPreparation 참고)
+│   └── jsonl_repository.py  # `DataRepository` 구현체(JSONL) — 지금은 이 형식뿐이지만 형식이 바뀌면 이 구현체만 교체
 ├── dataset/                # Phase 1.5 — `list[QueryRecord]` 위에서만 동작, 파일 형식을 모른다(DIP)
 │   ├── combine.py          # role 9개 `list[QueryRecord]` → 재조합, 클래스당 200건 검증
 │   └── split.py            # `list[QueryRecord]` → 클래스별 3:1:1 stratified 분할 (seed 고정)
@@ -75,7 +94,7 @@ LogisticRegression을 다른 분류기로 바꿔도 파이프라인 로직은 �
 형식이 지금은 CSV(`data_generation/csv_repository.py`, 읽기 전용)이고 저장은
 JSONL(`data_generation/jsonl_repository.py`)로 하지만, 나중에 원본 형식이 또 바뀌어도
 (예: 다른 포맷의 원본, Parquet, DB) 이 두 모듈과 CLI 오케스트레이션 로직은 수정하지
-않고 `DataRepository` 구현체만 추가/교체하면 된다([[P1_설계서_DataPreparation]] 참고).
+않고 `DataRepository` 구현체만 추가/교체하면 된다.
 
 ## 3. Workflow 친화 규약 (모든 Phase 공통)
 
@@ -243,3 +262,86 @@ embedding-lr/
 ├── prompt/                   # 기존 유지
 └── docs/                     # 기존 유지
 ```
+
+## 9. 2차 확장 — IT 세부 분류(멀티라벨 MLP) To-Be 아키텍처 (신규)
+
+[[Scope_Definition]] 2.2절·2.3절·3.4절·4.6절·7절에서 확정한 결정을 코드 구조 관점에서
+정리한다. **1차(1~8절)는 이 확장으로 어떤 파일도 수정되지 않는다** — 8절 Golden Rule 4
+"1차 불변 원칙". 상세 요구사항/설계는 이 절을 골격으로 후속
+`요구사항정의서_ITSubClassification.md`/`설계서_ITSubClassification.md`(Phase 접두사
+없음, 0절 참고)에서 구체화한다.
+
+### 9.1 개요
+
+1차 LR이 `IT`로 판정한 쿼리에 한해서만 2차 멀티라벨 MLP를 추가로 태우는 **캐스케이드**
+구조다. 2차 라벨(`DBA`/`DEVOPS`/`OS`/`NETWORK`/`MIDDLEWARE`/`ETC`)은 상호 배타적이지
+않으며 라벨별 독립 이진 판정(one-vs-rest, sigmoid+BCE)을 쓴다 — 1차의 단일 라벨
+softmax 방식과 다른 별도 모델 아티팩트다.
+
+### 9.2 모듈 구조 — 2차 전용 신규 패키지
+
+2차 소유 산출물은 1차 모듈을 import/수정하지 않고 **신규 패키지 하나**로 격리한다
+(2.3절 "2차가 소유하는 신규 모듈" 원칙). 1차의 `domain.interfaces.Classifier` Protocol,
+`workflow.run_context`, `logging_config`, `exceptions.EmbeddingLRError`는 신규 추가 없이
+그대로 재사용한다(2.3절 검토 결과).
+
+```
+src/embedding_lr/
+├── (1차 모듈 전체 — 2절 기준, 무수정)
+└── it_sub_classification/        # 2차 신규 패키지 — 1차 파일 무수정, 공용 추상화만 재사용
+    ├── constants.py               # SUB_LABELS(6종), 임계값 등 2차 전용 상수(1차 constants.py에 add하지 않음)
+    ├── dataset/
+    │   └── split.py               # 반복 계층화(iterative stratification) 3:1:1 분할 — 1차 dataset/split.py와 별개(단일 라벨 전제 재사용 불가)
+    ├── training/
+    │   └── trainer.py             # Classifier Protocol 구현체 — 멀티라벨 MLP(sigmoid+BCE), 1차 training/trainer.py와 별개 아티팩트
+    ├── evaluation/
+    │   └── metrics.py             # Subset Accuracy/라벨별 P·R·F1(micro/macro)/Hamming Loss
+    └── inference/
+        └── classifier.py          # 1차가 IT로 판정한 건만 로드해 재분류, sub_categories/sub_probabilities 산출
+```
+
+- 재라벨링(기존 IT role 데이터 재검토) 산출물은 코드가 아니라 데이터/문서 산출물이므로
+  이 패키지가 아니라 `data/<version>/it_sub_*.jsonl` + 검토서(`검토서_ITSubRelabeling.md`류)로
+  남는다.
+- CLI는 1차와 동일한 워크플로우 규약(3절)을 따르는 신규 진입점을 추가한다(예:
+  `cli/run_it_sub_train.py`, `cli/run_it_sub_eval.py` — 정확한 파일명은 설계서에서 확정),
+  기존 `run_phaseN.py`는 무수정.
+
+### 9.3 데이터 흐름 (To-Be)
+
+```mermaid
+flowchart TD
+    subgraph TRAIN2["2차 학습 경로 — it_sub_classification (신규, 1차 파일 무수정)"]
+        direction TD
+        A2["role_01~05_*.jsonl(1차, 읽기 전용) 재라벨링<br/>+ 신규 단일/복합 라벨 데이터"] -->|"재조합"| B2["it_sub_data.jsonl"]
+        B2 -->|"it_sub_classification.dataset.split (반복 계층화 3:1:1)"| C2["it_sub_train/test/val.jsonl"]
+        C2 -->|"embedding.pipeline 재사용(별도 콜렉션)"| D2["it_sub_*_vectors.parquet"]
+        D2 -->|"it_sub_classification.training.trainer (멀티라벨 MLP)"| E2["model_it_sub_&lt;ver&gt;.pkl"]
+        E2 -->|"it_sub_classification.evaluation"| F2["eval_report_it_sub_&lt;ver&gt;.md/json"]
+    end
+
+    subgraph INFER2["추론 경로 — 캐스케이드 (Phase 5 확장)"]
+        direction TD
+        G2["1차 predictor.predict_proba() 결과"] --> H2{"final_verdict == IT?"}
+        H2 -->|"No"| I2["응답 반환 (sub_categories 없음)"]
+        H2 -->|"Yes"| J2["it_sub_classification.inference.classifier<br/>(model_it_sub_&lt;ver&gt;.pkl, sigmoid+threshold)"]
+        J2 --> K2["응답에 sub_categories(리스트)/sub_probabilities 추가"]
+    end
+
+    F2 -.->|목표 달성 시 승격| J2
+```
+
+- 임베딩 변환(Phase 2)은 코드 무수정으로 재사용하되, `it_sub_*.jsonl`을 입력으로 별도
+  콜렉션(`<version>_it_sub_<split>`류, 정확한 명명은 설계서에서 확정)에 등록·조회한다.
+- 추론 경로는 1차 `predictor.predict_proba()` 결과가 `IT`일 때만 2차 모델을 추가 로드해
+  재분류한다 — 1차가 `IT`가 아니면 2차는 아예 실행되지 않는다.
+
+### 9.4 Docker / 테스트 전략 확장
+
+- Docker: `docker/Dockerfile.pipeline`(6절)를 그대로 재사용 — 2차 학습도 동일 배치
+  이미지에서 신규 CLI 커맨드로만 구분한다. `Dockerfile.inference`는 2차 모델 로드
+  로직이 추가되지만 이미지 자체는 그대로(의존성 변경 없으면 무수정).
+- 테스트: `it_sub_classification/dataset/split.py`, `evaluation/metrics.py`는 등급 A(순수
+  로직, TDD, 7절 표 기준)로 분류하고, `training/trainer.py`, `inference/classifier.py`는
+  등급 B(오케스트레이션)로 분류한다 — [[CLAUDE.md]] 2절 등급 기준과 동일 원칙을 2차
+  모듈에도 그대로 적용.

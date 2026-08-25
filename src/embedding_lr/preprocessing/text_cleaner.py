@@ -1,7 +1,7 @@
-"""임베딩 입력 텍스트 정제 — P2_설계서_TextCleaning.md. 등급 A(순수 로직) — 테스트 먼저.
+"""임베딩 입력 텍스트 정제 — Architecture_Design.md 참고. 등급 A(순수 로직) — 테스트 먼저.
 
 순서 고정: 코드펜스 구분자 제거 → 스택 트레이스 라인 제거 → 공백/개행 정규화.
-이 순서를 바꾸면 안 된다(P2_설계서_TextCleaning.md 4절)."""
+이 순서를 바꾸면 안 된다(Architecture_Design.md 참고)."""
 
 import re
 

@@ -1,4 +1,4 @@
-"""Phase 3 학습 오케스트레이션 — P3_설계서_Training.md 4절. 등급 B(오케스트레이션) —
+"""Phase 3 학습 오케스트레이션 — Architecture_Design.md 참고. 등급 B(오케스트레이션) —
 `Classifier` Protocol(domain/interfaces.py) 구현체 + GridSearchCV/PredefinedSplit 탐색.
 
 Trigger: search_hyperparameters(...) / train_final_model(...) — cli/run_phase3.py가 감싼다.

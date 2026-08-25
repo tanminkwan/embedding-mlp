@@ -1,4 +1,4 @@
-"""Protocol 정의 — P0_설계서_Common.md 4절. DIP 경계, 구현체는 각 Phase 모듈에서 제공."""
+"""Protocol 정의 — Architecture_Design.md 참고. DIP 경계, 구현체는 각 Phase 모듈에서 제공."""
 
 from typing import Protocol
 

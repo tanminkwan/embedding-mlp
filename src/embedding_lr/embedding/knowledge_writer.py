@@ -1,7 +1,7 @@
 """QueryRecord(정제 완료) → KnowledgeRecord 매핑 후 VectorStore.upsert() 적재 —
 Architecture_Design.md 2절/4절. 등급 B(오케스트레이션) — VectorStore Protocol에만
 의존(DIP), fake로 통합 테스트. text_cleaner 호출과 query+response 결합은 이 모듈이 아니라
-호출부(embedding/pipeline.py)의 책임이다(P2_설계서_TextCleaning.md 2절 SRP)."""
+호출부(embedding/pipeline.py)의 책임이다(Architecture_Design.md 참고, SRP)."""
 
 from pydantic import ValidationError as PydanticValidationError
 

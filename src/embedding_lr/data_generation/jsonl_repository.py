@@ -1,4 +1,4 @@
-"""domain.interfaces.DataRepository 구현체(JSONL) — P1_설계서_DataPreparation.md 3절.
+"""domain.interfaces.DataRepository 구현체(JSONL) — Architecture_Design.md 참고.
 등급 B(오케스트레이션, 파일 I/O 있음) — 구현 후 통합 테스트."""
 
 import json

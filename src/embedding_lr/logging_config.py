@@ -1,4 +1,4 @@
-"""로깅 설정 — P0_설계서_Logging.md. stdout에 구조화된 JSON 로그 출력."""
+"""로깅 설정 — Architecture_Design.md 참고. stdout에 구조화된 JSON 로그 출력."""
 
 import logging
 import sys

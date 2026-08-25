@@ -1,4 +1,4 @@
-"""검증 지표 순수 계산 — P4_설계서_Validation.md 4절. 등급 A(핵심 순수 로직) — 테스트 먼저.
+"""검증 지표 순수 계산 — Architecture_Design.md 참고. 등급 A(핵심 순수 로직) — 테스트 먼저.
 
 Trigger: evaluation/report.py가 아래 함수들을 순서대로 호출.
 Input:   (y_true, y_pred) 라벨 리스트, 또는 이미 계산된 ValidationMetrics/HyperparamSearchResult.

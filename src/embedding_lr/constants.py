@@ -1,4 +1,4 @@
-"""도메인 상수 — P0_설계서_Common.md 1절. 환경에 따라 달라지지 않는 고정값만 둔다."""
+"""도메인 상수 — Architecture_Design.md 참고. 환경에 따라 달라지지 않는 고정값만 둔다."""
 
 CLASS_LABELS = ["IT", "DAILY", "KNOWLEDGE", "CREATIVE", "ANOMALY"]
 IT_LABEL = "IT"
@@ -14,7 +14,7 @@ RECORDS_PER_CLASS = 200
 
 DOMAIN_NAME = "embedding_lr"
 
-# Phase 4 검증 목표치 — Scope_Definition.md 4.4절, 설계상 고정값(P4_설계서_Validation.md 2절)
+# Phase 4 검증 목표치 — Scope_Definition.md 4.4절, 설계상 고정값(Architecture_Design.md 참고)
 TARGET_ACCURACY = 0.85
 TARGET_BINARY_ACCURACY = 0.90
 TARGET_F1_MACRO = 0.85

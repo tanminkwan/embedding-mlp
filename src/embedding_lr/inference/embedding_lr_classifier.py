@@ -1,4 +1,4 @@
-"""TextClassifier Protocol 구현체 — 임베딩+LR 조합 — P5_설계서_Inference.md 3절. 등급 B
+"""TextClassifier Protocol 구현체 — 임베딩+LR 조합 — Architecture_Design.md 참고. 등급 B
 (오케스트레이션) — EmbeddingClient/Classifier Protocol에만 의존, fake로 통합 테스트.
 
 이 모듈이 EmbeddingClient와 Classifier 두 Protocol을 동시에 아는 유일한 곳이다 — 두
