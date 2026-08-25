@@ -1,11 +1,13 @@
-# 요구사항정의서_ITSubClassification — IT 세부 분류(2차) 데이터 준비 요구사항 정의서
+# P1_요구사항정의서_ITSubClassification — IT 세부 분류(2차) Phase 1 데이터 준비 요구사항 정의서
 
-1차(Phase 0~5, LR 5-class) 완료 후 진행하는 **유지보수 확장**의 첫 산출물이다.
+1차(Phase 0~5, LR 5-class) 완료 후 진행하는 **유지보수 확장**의 첫 산출물이다. 1차
+Phase별 문서가 폐기되어 물리적 충돌이 없으므로, [[Scope_Definition]] 7절 로드맵의 Phase
+번호를 그대로 재사용한다 — 이 문서는 2차의 **Phase 1(데이터 준비)** 요구사항정의서다.
 [[CLAUDE.md]] 3절 "작업 진행 순서"(요구사항정의서→설계서→코드/테스트→테스트결과서) 및
-7절 "유지보수 단계 예외"에 따라 Phase 접두사 없이 작성하며, **1차와 공통인 불변 부분은
-재서술하지 않고 [[Architecture_Design]](0절·9절)와 [[Scope_Definition]](2.2·2.3·3.4절)를
-참조**한다. 이 문서는 그 중 **데이터 준비 범위(2차 학습 데이터 확보)에 한정된 변경·추가
-사항만** 다룬다. 다음 산출물은 `설계서_ITSubClassification.md`(설계서)에서 다룬다.
+7절 "유지보수 단계 예외"에 따라, **1차와 공통인 불변 부분은 재서술하지 않고
+[[Architecture_Design]](0절·9절)와 [[Scope_Definition]](2.2·2.3·3.4절)를 참조**한다. 이
+문서는 그 중 **데이터 준비 범위(2차 학습 데이터 확보)에 한정된 변경·추가 사항만** 다룬다.
+다음 산출물은 `P1_설계서_ITSubClassification.md`(설계서)에서 다룬다.
 
 **1차 산출물(`data/<version>/role_01~09_*.jsonl`, `data.jsonl`, `train/test/val.jsonl`,
 1차 코드·모델·API 계약)은 이 문서의 범위에 포함되지 않으며 어떤 방식으로도 수정하지
@@ -46,7 +48,7 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 | # | 항목 |
 |---|---|
 | 1 | 기존 `role_01~05_*.jsonl`(200건) 재라벨링 — 각 레코드에 `세부카테고리`(리스트) 부여, 주 라벨 외 추가 해당 라벨 재검토 |
-| 2 | 재라벨링 근거 및 결과를 검토서로 기록 (`검토서_ITSubRelabeling.md`, [[CLAUDE.md]] 7절 DocType `검토서`) |
+| 2 | 재라벨링 근거 및 결과를 검토서로 기록 (`P1_검토서_ITSubRelabeling.md`, [[CLAUDE.md]] 7절 DocType `검토서`) |
 | 3 | 신규 단일 라벨 데이터 반영 — 라벨당(6종) 목표 보유량 확보, `ETC` 전량 포함 |
 | 4 | 신규 복합 라벨 데이터 반영 — 역할 간 경계 질의, 전체의 약 20~30%가 라벨 2개 이상 |
 | 5 | 재라벨링 결과 + 신규 생성 데이터를 통합해 `it_sub_data.jsonl`로 저장(`JsonlRepository` 재사용) |
@@ -60,7 +62,7 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 | 질의·응답 콘텐츠 생성(신규 단일/복합 라벨, LLM 프롬프트 기반) | 코드 밖(사람/에이전트가 프롬프트로 직접 수행) — [[Scope_Definition]] 3.4절 |
 | 신규 프롬프트 파일 작성(`prompt/roles/10_etc.md`, `11_composite.md`) | 코드 밖 — 프롬프트 설계 산출물 |
 | 1차 `role_01~09_*.jsonl`/`data.jsonl`/`train/test/val.jsonl` 생성·수정 | 1차(불변) — 이 문서의 범위 아님 |
-| 임베딩 변환, 멀티라벨 MLP 학습, 평가 | `설계서_ITSubClassification.md` 이후 산출물([[Architecture_Design]] 9.3절 `D2`~`F2`) |
+| 임베딩 변환, 멀티라벨 MLP 학습, 평가 | `P1_설계서_ITSubClassification.md` 이후 산출물([[Architecture_Design]] 9.3절 `D2`~`F2`) |
 
 ## 4. 기능 요구사항
 
@@ -76,7 +78,7 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 
 1차 `role_*.csv`/`role_*.jsonl`과 동일한 원시 스키마(`질의`/`응답`/`카테고리`="IT")로
 확보되며, 단일 라벨분과 복합 라벨분을 구분할 수 있는 형태로 전달된다(정확한 원본 파일
-명명은 `설계서_ITSubClassification.md`에서 확정 — 예: `role_10_etc.*`, `role_11_composite.*`).
+명명은 `P1_설계서_ITSubClassification.md`에서 확정 — 예: `role_10_etc.*`, `role_11_composite.*`).
 
 ### 4.2 출력 스키마(`it_sub_*.jsonl`)
 
@@ -116,7 +118,7 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
   비율은 1차와 동일하게 3:1:1.
 - 라벨별로 각 split에 최소 보유량이 확보되도록(단순 랜덤 분할 시 희소 라벨 조합이 특정
   split에 편중될 위험 방지) 반복 계층화 방식을 적용한다. 구체 알고리즘은
-  `설계서_ITSubClassification.md`에서 확정한다.
+  `P1_설계서_ITSubClassification.md`에서 확정한다.
 - 분할은 랜덤이되 **시드 고정**(1차와 동일 원칙)으로 재실행 시 동일 결과를 보장한다.
 
 ## 5. 비기능 요구사항 (품질 기준)
@@ -138,8 +140,8 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
 | 파일 | 설명 | 비고 |
 |---|---|---|
 | `data/<version>/role_01~05_*.jsonl` | 재라벨링 **입력**(1차 산출물, 읽기 전용) | 수정 금지 |
-| (신규 생성 원본, 파일명 `설계서_ITSubClassification.md`에서 확정) | 신규 단일/복합 라벨 콘텐츠 원본 | 코드 밖에서 확보 |
-| `docs/검토서_ITSubRelabeling.md` | 재라벨링 근거 검토서 | 신규 |
+| (신규 생성 원본, 파일명 `P1_설계서_ITSubClassification.md`에서 확정) | 신규 단일/복합 라벨 콘텐츠 원본 | 코드 밖에서 확보 |
+| `docs/P1_검토서_ITSubRelabeling.md` | 재라벨링 근거 검토서 | 신규 |
 | `data/<version>/it_sub_data.jsonl` | 재라벨링 200건 + 신규 데이터 재조합본 | 신규 |
 | `data/<version>/it_sub_train.jsonl` | 2차 학습셋 | 신규 |
 | `data/<version>/it_sub_test.jsonl` | 2차 테스트셋 | 신규 |
@@ -165,6 +167,6 @@ Phase 3(2차 모델 학습)·Phase 4(2차 검증)에 투입할 `it_sub_train.jso
   있으며, 실제 생성 후 라벨 조합 분포를 재확인해 필요 시 추가 생성으로 조정한다.
 - 반복 계층화 분할 알고리즘의 구체 구현(예: scikit-multilearn `iterative_train_test_split`
   사용 여부 등 라이브러리 의존성 포함)은 이 문서에서 확정하지 않고
-  `설계서_ITSubClassification.md`에서 다룬다.
+  `P1_설계서_ITSubClassification.md`에서 다룬다.
 - 1차 데이터는 이 작업으로 인해 어떤 경로로도 수정되지 않는다 — 7절 완료 기준의 마지막
   항목으로 명시적으로 검증한다.

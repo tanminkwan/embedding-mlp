@@ -173,8 +173,12 @@ curl -X POST http://localhost:8080/classify \
 | [Scope_Definition.md](docs/Scope_Definition.md) | 프로젝트 최초 요구사항(스코프, 분류 로직, AIPro+ 연동, Phase 로드맵) |
 | [Architecture_Design.md](docs/Architecture_Design.md) | 전체 시스템 설계 — 모듈 구조, 데이터 흐름, 기술 스택, Docker 구성. 1차(Phase 0~5) 완료 후 **프로젝트 전체의 단일 아키텍처 문서**로 통합됨(0절 참고) — 과거 Phase별 요구사항정의서/설계서/테스트결과서(`P0_*`~`P5_*`)는 폐기, 상세 이력은 아래 진행 상황 표와 git 이력 참고 |
 
-2차(IT 세부 분류) 이후 신규 문서는 Phase 접두사 없이 `<DocType>_<Topic>.md`로 추가되며,
-이 표에도 계속 추가한다([[CLAUDE.md]] 7절).
+| [P1_요구사항정의서_ITSubClassification.md](docs/P1_요구사항정의서_ITSubClassification.md) | **2차**(IT 세부 분류) Phase 1 데이터 준비 요구사항 정의서 — 기존 IT 데이터 재라벨링 + 신규 단일/복합 라벨 데이터 → `it_sub_*.jsonl` |
+
+1차 Phase별 문서가 폐기되어 물리적 충돌이 없으므로, 2차 신규 문서도 Phase 번호를 그대로
+재사용한다(예: `P1_요구사항정의서_ITSubClassification.md`) — 내용은 1차와 공통인 불변
+부분을 재서술하지 않고 `Architecture_Design.md`를 참조하며 변경·추가분만 다룬다
+([[CLAUDE.md]] 7절 "유지보수 단계 예외"). 이 표에도 계속 추가한다.
 
 ## 진행 상황
 
