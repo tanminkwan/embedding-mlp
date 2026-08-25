@@ -1,0 +1,329 @@
+"질의","응답","카테고리"
+"스위치에 새 VLAN 만들 때 최소한 뭘 설정해야 해?","```
+vlan 100
+name SERVER_VLAN
+```
+- 인터페이스에 물릴 때는 switchport access vlan 100으로 지정
+- 트렁크 포트면 allowed vlan 목록에도 추가해야 실제 통신됨","NETWORK"
+"인터페이스에서 duplex mismatch 났는지 어떻게 확인해?","```
+show interfaces gi1/0/1 | include duplex
+```
+- 한쪽 full, 한쪽 half면 late collision/CRC 에러 급증
+- 자동협상 안 되면 양쪽 수동으로 값 맞춰야 함","NETWORK"
+"특정 MAC 주소가 어느 포트에 붙어있는지 찾으려면?","```
+show mac address-table address 0011.2233.4455
+```
+- VLAN별로 따로 학습되니 VLAN도 같이 지정해서 확인
+- 여러 포트에 동시에 보이면 루프나 스푸핑 의심","NETWORK"
+"HSRP 그룹에서 지금 Active가 어느 장비인지 확인하려면?","```
+show standby brief
+```
+- State 컬럼에서 Active/Standby 확인
+- Active가 두 대로 보이면(split brain) 중간 링크 단절 의심하고 바로 확인","NETWORK"
+"인터페이스 CRC 에러 카운터가 계속 올라가는데 원인이 뭘까?","확인 순서:
+1. show interfaces에서 input errors, CRC 수치 추이 확인
+2. 케이블/커넥터 물리적 손상 여부 (제일 흔한 원인)
+3. duplex mismatch 여부 재확인
+4. 광인터페이스면 광파워 레벨(dBm) 확인
+- 케이블 교체로 절반 이상 해결되니 우선 교체 후 재확인 추천","NETWORK"
+"라우팅 테이블에 특정 목적지 라우트가 안 보이는데 뭐부터 봐야해?","확인 순서:
+1. show ip route로 해당 대역 자체가 없는지 확인
+2. 라우팅 프로토콜에서 해당 네트워크를 advertise 하고 있는지 확인
+3. 상위 요약(summary) 라우트에 묻혀서 안 보이는 건지 확인
+4. AD(관리 거리) 더 낮은 다른 프로토콜 라우트가 우선 선택됐는지 확인
+- 정적 라우트 넣었는데도 안 뜨면 next-hop 자체가 unreachable한 경우가 많음","NETWORK"
+"정적 라우트랑 동적 라우팅 프로토콜 라우트가 같이 있으면 뭐가 우선이야?","- administrative distance 낮은 쪽이 우선 (정적 라우트가 보통 더 낮음)
+- 정적 라우트 AD를 일부러 높여서 백업용(floating static route)으로 쓰기도 함
+- 같은 목적지라도 더 구체적인(longer prefix) 라우트가 있으면 그게 우선","NETWORK"
+"같은 스위치인데 VLAN 간 통신이 안 되는데 뭘 확인해야해?","확인 순서:
+1. 각 VLAN의 SVI(interface vlan) 상태가 up인지 확인
+```
+show ip interface brief | include Vlan
+```
+2. 인터-VLAN 라우팅 담당 장비에 해당 VLAN 게이트웨이가 설정됐는지 확인
+3. 방화벽/ACL이 VLAN 간 트래픽을 막고 있는지 확인
+4. 클라이언트 게이트웨이 설정이 실제 SVI IP와 일치하는지 확인
+- 라우팅 기능 없는 순수 L2 스위치면 애초에 인터-VLAN 라우팅 자체가 불가능함","NETWORK"
+"스위치 CPU 사용률이 갑자기 튀는데 원인 후보가 뭐가 있을까?","확인 순서:
+1. show processes cpu sorted로 상위 프로세스 확인
+2. 브로드캐스트 스톰 여부 (루프 발생 의심)
+3. 라우팅 토폴로지 변경으로 재계산 중인지 확인
+4. SNMP 폴링 주기가 너무 짧게 잡혀있는지 확인
+- 루프 의심되면 STP 상태와 포트별 트래픽 카운터부터 봐야 함","NETWORK"
+"포트 시큐리티 위반 로그는 어떻게 확인해?","```
+show port-security interface gi1/0/3
+```
+- Violation Count가 늘어나면 등록 안 된 MAC이 접속 시도한 것
+- 모드가 shutdown이면 위반 시 포트가 바로 err-disabled로 내려감","NETWORK"
+"방화벽 정책을 바꿨는데 기존 연결에는 적용이 안 되는 것 같은데 왜 그래?","확인 순서:
+1. 정책은 신규 세션에만 적용되고 기존 세션은 유지되는 구조인지 확인
+2. 기존 세션 강제 종료 필요 여부 확인
+```
+clear session all filter destination 10.0.0.5
+```
+3. 정책 커밋/적용 자체가 제대로 됐는지 재확인
+- 세션 캐시 때문에 정책 반영이 ""안 된 것처럼"" 보이는 게 실제로 가장 흔한 케이스","NETWORK"
+"iptables로 특정 IP를 차단했는데도 트래픽이 계속 들어오는데 원인이 뭘까?","확인 순서:
+1. 체인에 실제로 규칙이 반영됐는지 확인
+```
+iptables -L INPUT -n --line-numbers
+```
+2. 그보다 위에 있는 ACCEPT 규칙이 먼저 매치되고 있는지 확인
+3. NAT 테이블(PREROUTING)에서 먼저 처리돼서 filter 테이블에 도달 못 하는 경우인지 확인
+4. 저장을 안 해서 재부팅 이후 룰이 날아갔는지 확인
+- PREROUTING 단계에서 이미 처리되면 INPUT 체인에만 룰 넣어선 못 막음","NETWORK"
+"방화벽 이중화(HA) 구성에서 현재 상태 확인하는 법?","```
+show high-availability state
+```
+- Primary/Secondary 역할과 config sync 상태 같이 확인
+- sync 안 된 상태로 오래 방치되면 failover 시 정책 불일치 발생","NETWORK"
+"방화벽 CPU가 100% 찍히면서 트래픽 지연이 생기는데 원인이 뭘까?","확인 순서:
+1. show session all로 세션 수 급증 여부 확인
+2. 특정 정책에서 IPS/AV 같은 deep inspection 부하가 큰지 확인
+3. DDoS/스캔성 트래픽 유입 여부 확인
+4. 로깅 레벨이 과도해서 CPU/디스크 잡아먹는지 확인
+- 세션 수 급증이면 특정 소스가 커넥션을 비정상적으로 많이 여는지부터 체크","NETWORK"
+"방화벽 ACL 규칙은 왜 위에서부터 순서대로 봐야 해?","- 대부분 top-down으로 첫 매치 규칙만 적용하고 그 아래는 안 봄
+- 넓은 permit/deny를 위에 두면 아래 세부 규칙이 무시됨
+- 세부 규칙은 항상 상위에, 광범위 규칙은 하위에 두는 게 기본 원칙","NETWORK"
+"방화벽 정책 중에 안 쓰는 룰(unused rule) 찾으려면?","```
+show rule-usage unused-rules
+```
+- hit count 0인 룰 목록으로 확인 가능한 장비가 많음
+- 일정 기간(예: 90일) hit 없는 룰은 정리 대상으로 표시해두는 게 관리에 유리","NETWORK"
+"LB VIP 자체가 다운된 것 같은데 확인 순서가 어떻게 돼?","확인 순서:
+1. VIP로 직접 ping/curl 테스트
+2. LB 자체 인터페이스/서비스 프로세스 상태 확인
+3. Active-Standby 구성이면 현재 Active가 어느 쪽인지 확인
+4. VRRP/gratuitous ARP 광고가 제대로 나가는지 확인
+- Active 노드가 바뀌었는데 ARP 캐시 갱신이 안 돼서 일부 클라이언트만 접속 안 되는 경우 있음","NETWORK"
+"L4 로드밸런서 NAT 모드랑 DSR 모드 차이가 뭐야?","- NAT 모드는 LB가 응답까지 항상 경유해서 LB가 병목 될 수 있음
+- DSR(Direct Server Return)은 응답이 서버에서 클라이언트로 직접 나가서 LB 부하 감소
+- DSR은 서버 쪽 루프백 인터페이스에 VIP 설정하는 등 추가 구성 필요","NETWORK"
+"SSL passthrough랑 SSL offloading 차이가 뭐야?","- passthrough는 암호화된 트래픽 그대로 백엔드까지 전달, 백엔드가 직접 복호화
+- offloading은 LB에서 복호화 후 평문으로 백엔드 전달 (백엔드 부하 감소)
+- offloading 쓰면 LB-백엔드 구간 재암호화 필요 여부 별도로 검토해야 함","NETWORK"
+"LB 세션 테이블이 가득 차서 신규 연결이 실패하는 것 같은데 뭐부터 봐야해?","확인 순서:
+1. 현재 세션 수와 최대 세션 제한값 비교
+```
+show session count
+```
+2. 특정 클라이언트/백엔드가 세션을 과도하게 점유하는지 확인
+3. 세션 타임아웃이 너무 길게 잡혀서 안 끊기고 누적되는지 확인
+4. half-open 세션 비율 확인
+- 타임아웃 줄이는 건 임시방편이고 근본적으론 세션 테이블 용량 증설 검토","NETWORK"
+"Active-Standby 구성 LB에서 장애 발생 시 failover가 안 되는데 원인이 뭘까?","확인 순서:
+1. 헬스체크(heartbeat) 링크 자체가 살아있는지 확인
+2. failover 트리거 조건(우선순위, preempt 설정) 확인
+3. Standby가 config sync 안 돼서 실제로는 서비스 불가 상태인지 확인
+4. 클라이언트 쪽 ARP/DNS 캐시가 갱신 안 돼서 여전히 죽은 노드로 붙는지 확인
+- preempt 비활성화면 원래 Active가 복구돼도 자동으로 안 돌아오니 운영 정책과 맞는지 확인 필요","NETWORK"
+"L7 LB에서 HTTP 요청을 HTTPS로 강제 리다이렉트하려면?","```
+http-request redirect scheme https unless { ssl_fc }
+```
+- 리다이렉트 후 원본 URI/쿼리스트링 유지되는지 확인
+- 헬스체크가 HTTP로 붙는 설정이면 리다이렉트 때문에 실패로 오인될 수 있음","NETWORK"
+"인증서랑 개인키가 서로 짝이 맞는지 확인하는 법?","```
+openssl x509 -noout -modulus -in cert.pem | openssl md5
+openssl rsa -noout -modulus -in key.pem | openssl md5
+```
+- 두 해시값이 같아야 정상 짝
+- 다르면 잘못된 키가 설치된 것, 재시작해도 handshake 계속 실패함","NETWORK"
+"Let's Encrypt 인증서 자동 갱신이 실패하는데 원인 후보가 뭐가 있을까?","확인 순서:
+1. certbot 갱신 로그/dry-run 확인
+```
+certbot renew --dry-run
+```
+2. HTTP-01 challenge면 80포트 외부 접근 가능 여부 확인
+3. DNS-01 challenge면 TXT 레코드 갱신용 API 키/권한 만료 여부 확인
+4. 리버스프록시/방화벽이 .well-known 경로 막고 있는지 확인
+- 갱신 후 웹서버 reload 훅이 안 걸려있으면 갱신은 됐는데 서비스엔 반영 안 되는 경우 있음","NETWORK"
+"HTTPS 페이지에서 mixed content 경고가 뜨는데 왜 그래?","- HTTPS 페이지 안에서 HTTP로 리소스(이미지, 스크립트 등)를 불러올 때 발생
+- 브라우저가 보안 위험으로 판단해서 일부 리소스 차단하거나 경고 표시
+- 리소스 URL을 프로토콜 상대경로(//)나 https로 통일하면 해결","NETWORK"
+"mTLS 구성인데 클라이언트 인증서 검증이 계속 실패하는데 뭐 봐야해?","확인 순서:
+1. 서버가 요구하는 CA로 클라이언트 인증서가 서명됐는지 확인
+```
+openssl verify -CAfile ca.pem client.pem
+```
+2. 클라이언트 인증서 만료 여부
+3. 서버의 trusted CA 목록에 해당 CA가 빠졌는지 확인
+4. CRL/OCSP로 해당 인증서가 폐기 처리됐는지 확인
+- 중간 인증서 누락으로 서버 쪽 체인 검증만 실패하는 경우도 흔함","NETWORK"
+"HSTS 설정하면 뭐가 달라져?","- 브라우저가 해당 도메인은 무조건 HTTPS로만 접속하도록 강제
+- 최초 HTTP 접속 시도도 브라우저가 자동으로 HTTPS로 바꿔버림
+- max-age 길게 걸면 되돌리기 어려우니 includeSubDomains 여부 신중히 결정","NETWORK"
+"pfx 파일을 pem으로 변환하려면?","```
+openssl pkcs12 -in cert.pfx -out cert.pem -nodes
+```
+- 개인키까지 같이 나오니 변환 후 파일 권한 바로 제한 필요
+- 인증서/키 분리하려면 -nocerts, -nokeys 옵션 따로 사용","NETWORK"
+"VPN 연결하면 인터넷 속도가 확 느려지는데 원인이 뭘까?","확인 순서:
+1. 풀 터널(full tunnel)로 설정돼서 모든 트래픽이 VPN 경유하는지 확인
+2. split tunneling 지원 여부와 활성화 상태 확인
+3. VPN 서버/터널 구간 자체의 대역폭 병목 확인
+4. 저성능 라우터에서 암호화 오버헤드로 처리량 떨어지는지 확인
+- 회사 정책상 풀 터널이 의도된 설정이면 정상 동작이니 사용자 안내가 먼저","NETWORK"
+"GRE 터널이 up 상태인데도 그 안으로 트래픽이 안 나가는데 원인이 뭘까?","확인 순서:
+1. 터널 소스/목적지 IP가 실제 라우팅 가능한 경로인지 확인
+2. 터널 인터페이스로 가는 라우트가 등록됐는지 확인
+```
+show ip route | include Tunnel
+```
+3. 중간 구간 방화벽에서 GRE(프로토콜 47) 자체를 막고 있는지 확인
+4. MTU 문제로 터널 오버헤드 감안 안 해서 큰 패킷만 드랍되는지 확인
+- 터널 상태는 up인데 라우팅을 안 태워서 트래픽이 안 나가는 경우가 실제로 제일 많음","NETWORK"
+"VPN 연결은 되는데 특정 사설망 대역만 라우팅이 안 되는데 뭐부터 봐야해?","확인 순서:
+1. VPN 클라이언트에 push되는 라우트 목록에 해당 대역 포함 여부 확인
+2. 서버 쪽 라우팅 테이블에 해당 대역 자체가 등록됐는지 확인
+3. 방화벽에서 해당 대역으로의 트래픽 허용 여부 확인
+4. 클라이언트 로컬 네트워크와 사설망 대역이 겹쳐서 라우팅이 꼬였는지 확인
+- 클라이언트 PC의 기존 로컬망과 대역이 겹치면 라우팅 자체가 애매해짐","NETWORK"
+"Wireguard는 IPSec이랑 뭐가 다른데?","- 코드베이스가 훨씬 작고 커널 레벨 구현이라 성능이 빠름
+- 설정이 단순함 (공개키 교환 기반, 복잡한 협상 단계 없음)
+- 상대적으로 최신 기술이라 일부 레거시 장비/환경에서는 지원 안 되는 경우 있음","NETWORK"
+"양쪽 사이트 VPN 터널 설정했는데 통신이 안 되는데 서브넷 겹치는 게 원인일 수 있대, 어떻게 확인해?","확인 순서:
+1. 양쪽 사설망 대역이 겹치는지 대조
+```
+show crypto ipsec sa | include local ident
+```
+2. 겹치면 NAT overlap 방식으로 우회 구성 가능한지 확인
+3. 근본적으론 겹치는 대역 중 한쪽을 재할당하는 게 맞는 해결책
+- 겹친 상태로 임시방편(NAT)만 쓰면 예외 케이스가 계속 발생함","NETWORK"
+"SSL VPN 포탈 접속이 안 되는데 제일 먼저 뭘 봐야해?","```
+telnet vpn.company.com 443
+```
+- 방화벽에서 해당 포트가 외부로 열려있는지 확인
+- 인증서 만료로 접속 자체가 막힌 경우도 있어서 브라우저 경고 메시지도 같이 확인","NETWORK"
+"특정 두 IP끼리만 오가는 패킷을 tcpdump로 보려면?","```
+tcpdump -i eth0 host 10.0.0.5 and host 10.0.0.10
+```
+- 양방향 다 캡처되니 방향 구분하려면 src/dst 옵션 추가
+- 캡처량 많으면 -n으로 DNS 역조회 끄는 게 속도에 도움됨","NETWORK"
+"캡처한 pcap에서 재전송(retransmission)이 많이 보이는데 원인 후보가 뭐가 있을까?","확인 순서:
+1. Wireshark에서 tcp.analysis.retransmission 필터로 빈도 확인
+2. 양쪽 캡처 비교해서 손실이 특정 구간에 몰려있는지 확인
+3. 수신 측 버퍼 부족으로 window full 상태 반복되는지 확인
+4. 중간 장비(방화벽/LB)에서 패킷을 드랍하고 있는지 확인
+- 재전송이 유독 한쪽 방향에서만 많으면 그 구간 회선/장비부터 의심","NETWORK"
+"HTTP 요청 내용을 tcpdump로 바로 확인하려면?","```
+tcpdump -i eth0 -A port 80 | grep -A 10 ""GET\|POST""
+```
+- HTTPS는 암호화돼서 이 방법으로 안 보임
+- 패킷이 여러 개로 쪼개지면 -A만으로는 전체 페이로드 확인이 안 될 수 있음","NETWORK"
+"캡처에서 duplicate ACK가 계속 보이는데 왜 그런 거야?","확인 순서:
+1. 수신자가 순서 어긋난 세그먼트를 받아서 이전 ACK를 반복 전송 중인지 확인
+2. 패킷 손실/순서 뒤바뀜이 발생하는 구간(라우팅 비대칭 등) 확인
+3. 3개 이상 연속되면 발신자가 fast retransmit을 트리거하는 게 정상 동작
+- duplicate ACK는 증상이고, 근본 원인은 대부분 손실/지연 있는 구간부터 찾아야 함","NETWORK"
+"ICMP 패킷만 골라서 캡처하려면?","```
+tcpdump -i eth0 icmp
+```
+- ping 테스트 중 요청/응답 짝이 맞는지 seq 번호로 확인
+- echo-request만 보려면 icmp[icmptype]==8 조건 추가","NETWORK"
+"메일 발송이 스팸으로 자주 분류되는데 PTR(역방향 DNS) 문제인지 확인하려면?","확인 순서:
+1. 발신 서버 IP로 역방향 조회
+```
+dig -x <발신서버IP>
+```
+2. PTR 결과 도메인이 실제 발신 도메인과 매칭되는지(FCrDNS) 확인
+3. PTR 자체가 없거나 ISP 기본 이름으로 남아있는지 확인
+4. SPF/DKIM/DMARC 설정도 같이 확인
+- PTR 등록은 IP 소유 기관(ISP/클라우드사)에 요청해야 해서 리드타임 고려해야 함","NETWORK"
+"특정 도메인 조회할 때 응답이 유독 느린데 원인이 뭘까?","확인 순서:
+1. 어느 단계에서 지연되는지 루트부터 확인
+```
+dig +trace example.com
+```
+2. 네임서버 자체 응답 속도 확인 (해외 리전이면 RTT 자체가 큼)
+3. 재귀 리졸버 캐시 미스로 매번 풀 체인 조회하는지 확인
+4. 네임서버 쿼리 부하 급증 여부 확인
+- TTL이 너무 짧으면 캐시 활용을 못 해서 매번 느리게 느껴질 수 있음","NETWORK"
+"같은 이름에 CNAME이랑 다른 레코드(A 등) 같이 등록해도 돼?","- 안 됨, CNAME이 있는 이름은 다른 레코드 타입을 같이 가질 수 없음
+- 같이 필요하면 CNAME 대신 A 레코드로 직접 IP 등록하거나 ALIAS 같은 확장 기능 사용
+- 이미 등록돼 있으면 반영 시점에 에러 나거나 예상 못한 응답이 나옴","NETWORK"
+"존 파일 문법 오류를 미리 확인하려면?","```
+named-checkzone example.com /etc/bind/zones/example.com.db
+```
+- 오류 있으면 라인 번호까지 알려주니 반영 전 필수로 돌려봐야 함
+- SOA serial 안 올리면 secondary에 반영 안 되니 같이 체크","NETWORK"
+"DNS 캐시 포이즈닝이 의심되는 상황인데 어떻게 확인해?","확인 순서:
+1. 정상 응답과 비교해서 IP가 예상 밖 값으로 나오는지 확인
+```
+dig example.com A @8.8.8.8
+dig example.com A @internal_resolver
+```
+2. TTL이 비정상적으로 크게 설정됐는지 확인 (오염된 응답 오래 유지시키는 패턴)
+3. 리졸버가 DNSSEC 검증을 켜고 있는지 확인
+4. 리졸버 로그에서 비정상 응답 소스 IP 확인
+- 의심되면 캐시 즉시 flush하고 DNSSEC 미적용 상태였으면 적용 검토","NETWORK"
+"서버 인증서 체인이 제대로 구성됐는지 원격으로 빠르게 확인하려면?","```
+openssl s_client -connect host:443 -servername host -showcerts
+```
+- Verify return code: 0 (ok)이면 체인 정상
+- unable to get local issuer certificate 뜨면 intermediate 누락 의심","NETWORK"
+"취약점 점검에서 자체 서명(self-signed) 인증서 사용 중이라고 지적됐는데 어떻게 대응해?","확인 순서:
+1. 해당 서비스가 내부 전용인지 외부 노출인지 확인
+2. 내부 전용이면 내부 CA 발급으로 전환 검토
+3. 외부 노출이면 공인 CA 인증서로 즉시 교체 필요
+4. 교체 후 클라이언트/앱에 이전 인증서 하드코딩된 곳 없는지 확인
+- 예외처리(리스크 수용)로 넘길 거면 점검 결과서에 사유와 기한 명시해둬야 함","NETWORK"
+"인증서 개인키 파일 권한은 어떻게 설정해야 돼?","```
+chmod 600 server.key
+chown root:root server.key
+```
+- 그룹/전체 읽기 권한 열려있으면 취약점 점검에서 바로 걸림
+- 여러 서비스 계정이 공유해야 하면 전용 그룹으로 최소 권한만 부여","NETWORK"
+"CRL이랑 OCSP 차이가 뭐야?","- CRL은 폐기된 인증서 전체 목록을 주기적으로 받아 비교 (목록 커질수록 느림)
+- OCSP는 특정 인증서 하나에 대해 실시간으로 폐기 여부만 질의
+- OCSP 서버 장애 시 검증이 막힐 수 있어 OCSP stapling으로 보완하는 경우 많음","NETWORK"
+"OCSP stapling 미설정 때문에 페이지 로딩이 느려진다는데 어떻게 확인해?","확인 순서:
+1. 서버가 OCSP staple 응답을 포함하는지 확인
+```
+openssl s_client -connect host:443 -status
+```
+2. OCSP Response 항목이 없으면 stapling 미동작 상태
+3. 클라이언트가 매 접속마다 OCSP 서버에 직접 질의하느라 지연되는지 확인
+4. 서버 설정(nginx ssl_stapling on 등) 활성화 여부 확인
+- OCSP 서버 자체가 외부라 느리면 stapling만 켜도 체감 속도가 크게 개선됨","NETWORK"
+"WAF 룰 때문에 정상 요청이 차단되는 것 같은데 어떻게 확인해?","확인 순서:
+1. WAF 로그에서 차단된 요청의 매치 룰 ID 확인
+2. 정상 파라미터가 SQLi/XSS 패턴과 우연히 일치하는지(false positive) 확인
+3. 해당 룰만 예외(whitelist) 처리 가능한지 확인
+4. 차단 대신 로그만 남기는 detection-only 모드로 임시 전환해서 영향 범위 파악
+- 예외 처리는 URI/파라미터 단위 최소 범위로 걸어야 룰 전체 무력화 위험이 줄어듦","NETWORK"
+"트렁크 포트에서 native vlan이 뭐야?","- 태그 없이 전달되는 VLAN, 스위치 양단 native vlan이 다르면 VLAN leaking/보안 이슈 발생
+- 양쪽 스위치 native vlan 일치 확인이 트렁크 설정 기본","NETWORK"
+"방화벽에서 stateful inspection이 뭐야?","- 연결 상태(세션)를 추적해서 응답 트래픽은 별도 룰 없이 자동 허용하는 방식
+- 룰은 보통 아웃바운드/인바운드 최초 연결 기준으로만 작성","NETWORK"
+"로드밸런서 헬스체크 주기를 너무 짧게 잡으면 뭐가 문제야?","- 백엔드 서버 부하 증가, 일시적 응답 지연에도 바로 unhealthy 처리되어 불필요한 failover 발생
+- 헬스체크 주기/실패 임계 횟수를 실제 응답 특성에 맞춰 조정 필요","NETWORK"
+"SSL 인증서 만료일 확인하는 명령어는?","```bash
+openssl x509 -enddate -noout -in cert.pem
+```
+- 원격 서버 인증서는 openssl s_client -connect host:443로 받아서 같은 방식으로 확인","NETWORK"
+"BGP 이웃(neighbor)이 안 맺어지는데 뭐부터 확인해?","확인 순서:
+1. 물리적 연결/인터페이스 상태 확인
+2. AS 번호, neighbor IP 설정이 양쪽 일치하는지 확인
+3. 방화벽에서 TCP 179 포트가 막혀있지 않은지 확인
+- 놓치기 쉬운 점: 설정은 맞는데 중간 방화벽에서 179 포트 막혀있는 경우가 의외로 많음","NETWORK"
+"스위치 포트가 err-disabled 상태로 자꾸 빠지는데 원인 확인 순서는","확인 순서:
+1. show interfaces status err-disabled로 대상 포트 확인
+2. 로그에서 원인(BPDU guard, 포트시큐리티 위반 등) 확인
+3. 반복되면 근본 원인(루프, 스푸핑) 먼저 해결 후 shutdown/no shutdown으로 복구
+- 포인트: 무작정 복구만 반복하면 근본 원인을 놓침","NETWORK"
+"특정 목적지로 가는 트래픽이 예상과 다른 경로로 나가는데 확인 순서는","확인 순서:
+1. traceroute로 실제 경로 확인
+2. 라우팅 테이블에서 해당 목적지 매칭되는 라우트 확인(더 구체적인 라우트가 우선)
+3. 정책 기반 라우팅(PBR) 설정 여부 확인
+- 포인트: 관리자가 잊고 있던 PBR 룰 때문인 경우가 은근히 많음","NETWORK"
+"방화벽 룰 순서를 바꿨더니 특정 서비스가 막히기 시작했어, 왜 그럴까","- ACL/방화벽 룰은 위에서부터 순서대로 매칭되어 먼저 매칭된 룰이 적용되고 이후 룰은 평가 안 됨
+- 순서 변경으로 더 광범위한 deny 룰이 먼저 걸려버린 경우가 흔함
+- 포인트: 룰 순서 변경 전엔 항상 영향받는 트래픽부터 시뮬레이션 필요","NETWORK"
+"DNS 라운드로빈 설정했는데 트래픽이 골고루 안 나가는 것 같은데 원인은","확인 순서:
+1. 클라이언트/리졸버 단의 DNS 캐싱(TTL) 때문에 한 IP로 몰리는 건 아닌지 확인
+2. 애플리케이션이 커넥션을 계속 재사용(keep-alive)해서 최초 조회 IP만 계속 쓰는지 확인
+- 포인트: DNS 라운드로빈은 진짜 로드밸런싱이 아니라 순번 분배일 뿐, 캐싱 때문에 균등하게 안 나가는 게 정상적인 한계","NETWORK"
+"사설 IP 대역이 겹치는 두 네트워크를 VPN으로 연결해야 하는데 어떻게 해","- 근본적으로는 한쪽 대역 재구성이 정답이지만 급하면 NAT(1:1 또는 오버랩 NAT)로 우회 가능
+- 방화벽/VPN 장비에서 정책 기반 NAT 설정으로 겹치는 대역을 가상의 다른 대역으로 매핑
+- 포인트: NAT 우회는 임시방편, 장기적으로는 IP 대역 재설계가 맞음","NETWORK"
